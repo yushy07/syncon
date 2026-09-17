@@ -1,6 +1,10 @@
 <div align="center">
 
-<img src="assets/icons/android-chrome-192x192.png" width="96" height="96" alt="SyncOn App Icon" />
+<img src="assets/banner.png" alt="SyncOn Hero Banner" width="100%" />
+
+<br/><br/>
+
+<img src="assets/icons/android-chrome-192x192.png" width="88" height="88" alt="SyncOn App Icon" />
 
 # SyncOn
 
@@ -13,7 +17,9 @@
 
 **A high-precision, offline-first personal digital wellbeing and app limit enforcement system for Android.**
 
-[Features](#key-features) • [Architecture](#architecture) • [Usage-Day Logic](#usage-day-definition-400-am---400-am) • [Permissions](#permissions--setup) • [Getting Started](#getting-started) • [License](#license)
+*"Same phone. A more intentional you."*
+
+[Features](#key-features) • [Design & Branding](#design--visual-identity) • [Architecture](#architecture) • [Usage-Day Logic](#usage-day-definition-400-am---400-am) • [Permissions](#permissions--setup) • [Getting Started](#getting-started) • [License](#license)
 
 </div>
 
@@ -23,10 +29,36 @@
 
 **SyncOn** is an advanced, standalone Android application designed to give you uncompromising control over your screen time. While standard digital wellbeing tools provide passive observation, SyncOn enforces proactive, granular boundaries tailored to your daily schedule:
 
-- **100% Offline & Private:** Built with zero network permissions. Your personal usage data never leaves your device.
-- **Custom Usage Days:** Evaluates your day on a **4:00 AM to 4:00 AM** boundary—late night activity counts toward your actual awake period, not an arbitrary midnight reset.
-- **Strict vs. Soft Blocking:** Enforce ironclad limits on distraction apps while maintaining flexible snoozes for work and utility tools.
-- **Data Gap Reconciliation:** Never loses usage history across reboots or background kills by reconciling with Android's system event log.
+- 🔒 **100% Offline & Private:** Built with zero network permissions. Your personal usage data never leaves your device.
+- 🌅 **Custom Usage Days:** Evaluates your day on a **4:00 AM to 4:00 AM** boundary—late night activity counts toward your actual awake period, not an arbitrary midnight reset.
+- 🛡️ **Strict vs. Soft Blocking:** Enforce ironclad limits on distraction apps while maintaining flexible snoozes for work and utility tools.
+- ⚡ **Data Gap Reconciliation:** Never loses usage history across reboots or background kills by reconciling with Android's system event log.
+
+---
+
+## Design & Visual Identity
+
+SyncOn's brand aesthetic embodies mindfulness, calm focus, and intentional digital balance:
+
+<div align="center">
+
+| App Launcher (Squircle) | Round Launcher | Adaptive Foreground | Notification Icon | Web Favicon |
+|:---:|:---:|:---:|:---:|:---:|
+| <img src="assets/icons/android-chrome-192x192.png" width="64" height="64" alt="Launcher Squircle" /> | <img src="app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png" width="64" height="64" alt="Round Icon" /> | <img src="app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png" width="64" height="64" alt="Foreground Sprout" /> | <img src="app/src/main/res/drawable-xxhdpi/ic_stat_syncon.png" width="48" height="48" alt="Status Notification" /> | <img src="assets/icons/favicon-32x32.png" width="32" height="32" alt="Favicon" /> |
+| `ic_launcher` | `ic_launcher_round` | `ic_launcher_foreground` | `ic_stat_syncon` | `favicon.ico` |
+
+</div>
+
+### Color Palette
+
+| Color Token | Hex Code | Visual Role |
+|---|:---:|---|
+| **Dark Obsidian** | `#15182B` | Brand squircle background, adaptive icon base, status bar theme |
+| **Primary Indigo** | `#4F67E0` | Primary action buttons, active navigation indicators, key highlights |
+| **Warm Background** | `#FBF9F5` | Calming daylight background surface |
+| **Accent Coral** | `#E06D53` | Strict blocking alert, approaching limit warnings |
+| **Accent Sage** | `#3E6B5C` | Health indicators, permission granted states, calm accents |
+| **Accent Amber** | `#E8A838` | Soft limit warnings, browser categories |
 
 ---
 
@@ -59,7 +91,7 @@ Configure each application with an independent daily limit:
 
 ### 🧪 Comprehensive Test Coverage
 - **Pure JVM Unit Tests:** Decoupled business logic allowing unit tests to run in seconds without heavy Android mocks or Robolectric.
-- **Repository Validation:** Full test coverage for limit checks, active snooze calculations, warning thresholds (80%), and 90-day retention pruning.
+- **Repository Validation:** Full test coverage for limit checks, active snooze calculations, warning thresholds (80%), and retention pruning.
 - **Precision Time Tests:** Validates the 4:00 AM boundary logic across midnight, leap years, and edge-case timestamps.
 
 ---
@@ -180,39 +212,51 @@ To deliver automated tracking and enforcement without root access, SyncOn reques
 
 ```
 syncon/
+├── assets/
+│   ├── banner.png           # High-resolution repository hero banner
+│   └── icons/               # Web favicons, PWA icons, vector SVG & webmanifest
 ├── app/
 │   ├── schemas/             # Versioned Room database schemas (JSON)
 │   └── src/
-│       ├── main/java/com/yu/syncon/
-│       │   ├── data/
-│       │   │   ├── local/
-│       │   │   │   ├── dao/             # Room DAOs (DailyUsage, AppInfo, Limits, etc.)
-│       │   │   │   ├── entity/          # Room @Entity schemas
-│       │   │   │   └── AppDatabase.kt   # Database configuration & type converters
-│       │   │   └── repository/          # UsageRepository (data access & business logic)
-│       │   ├── service/
-│       │   │   ├── accessibility/       # BlockAccessibilityService (real-time blocking)
-│       │   │   ├── receiver/            # BootReceiver (boot listener)
-│       │   │   ├── tracking/            # ForegroundTrackingService (5-min tracking loop)
-│       │   │   └── worker/              # DailyResetWorker (4 AM maintenance)
-│       │   ├── ui/
-│       │   │   ├── appdetail/           # Per-app limit configuration
-│       │   │   ├── applist/             # Installed apps with category filters
-│       │   │   ├── blocked/             # Fullscreen blocking overlay screen
-│       │   │   ├── components/          # Reusable Compose charts and controls
-│       │   │   ├── dashboard/           # Today's metrics and summary
-│       │   │   ├── navigation/          # Compose Navigation routes
-│       │   │   ├── onboarding/          # Step-by-step permissions flow
-│       │   │   ├── settings/            # App settings and permission status
-│       │   │   ├── theme/               # Material 3 colors, typography, shapes
-│       │   │   └── trends/              # 7-day and 30-day analytics charts
-│       │   ├── util/
-│       │   │   ├── CategoryMapper.kt    # Default category mapping
-│       │   │   ├── NotificationHelper.kt# Heads-up limit warning notifications
-│       │   │   ├── PermissionUtils.kt   # App-ops and permission checkers
-│       │   │   └── UsageDayCalculator.kt# 4 AM boundary calculation engine
-│       │   └── SyncOnApp.kt             # Application class & centralized repository provider
-│       └── test/java/com/yu/syncon/     # Unit tests (UsageRepository, Calculator, Mapper)
+│       ├── main/
+│       │   ├── AndroidManifest.xml
+│       │   ├── java/com/yu/syncon/
+│       │   │   ├── data/
+│       │   │   │   ├── local/
+│       │   │   │   │   ├── dao/             # Room DAOs (DailyUsage, AppInfo, Limits, etc.)
+│       │   │   │   │   ├── entity/          # Room @Entity schemas
+│       │   │   │   │   └── AppDatabase.kt   # Database configuration & type converters
+│       │   │   │   └── repository/          # UsageRepository (data access & business logic)
+│       │   │   ├── service/
+│       │   │   │   ├── accessibility/       # BlockAccessibilityService (real-time blocking)
+│       │   │   │   ├── receiver/            # BootReceiver (boot listener)
+│       │   │   │   ├── tracking/            # ForegroundTrackingService (5-min tracking loop)
+│       │   │   │   └── worker/              # DailyResetWorker (4 AM maintenance)
+│       │   │   ├── ui/
+│       │   │   │   ├── appdetail/           # Per-app limit configuration
+│       │   │   │   ├── applist/             # Installed apps with category filters
+│       │   │   │   ├── blocked/             # Fullscreen blocking overlay screen
+│       │   │   │   ├── components/          # Reusable Compose charts and controls
+│       │   │   │   ├── dashboard/           # Today's metrics and summary
+│       │   │   │   ├── navigation/          # Compose Navigation routes
+│       │   │   │   ├── onboarding/          # Step-by-step permissions flow
+│       │   │   │   ├── settings/            # App settings and permission status
+│       │   │   │   ├── theme/               # Material 3 colors, typography, shapes
+│       │   │   │   └── trends/              # 7-day and 30-day analytics charts
+│       │   │   ├── util/
+│       │   │   │   ├── CategoryMapper.kt    # Default category mapping
+│       │   │   │   ├── NotificationHelper.kt# Heads-up limit warning notifications
+│       │   │   │   ├── PermissionUtils.kt   # App-ops and permission checkers
+│       │   │   │   └── UsageDayCalculator.kt# 4 AM boundary calculation engine
+│       │   │   └── SyncOnApp.kt             # Application class & centralized repository provider
+│       │   └── res/
+│       │       ├── drawable/                # Play Store & in-app brand logos
+│       │       ├── drawable-*/              # Monochrome status bar notification icons
+│       │       ├── mipmap-anydpi-v26/       # Android 13+ adaptive & themed icons
+│       │       ├── mipmap-*/                # Multi-density launcher icons (mdpi to xxxhdpi)
+│       │       ├── values/                  # Strings, colors, themes, launcher background
+│       │       └── xml/                     # Accessibility service configuration
+│       └── test/java/com/yu/syncon/         # JVM unit tests (Repository, Calculator, Mapper)
 ```
 
 ---
