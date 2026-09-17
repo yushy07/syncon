@@ -55,6 +55,11 @@ Configure each application with an independent daily limit:
 - **7-Day & 30-Day Trends:** Interactive Jetpack Compose bar charts and summaries.
 - **3-Year Retention:** Retains up to 1,095 days of indexed daily usage history with automated background pruning via `WorkManager`.
 
+### 🧪 Comprehensive Test Coverage
+- **Pure JVM Unit Tests:** Decoupled business logic allowing unit tests to run in seconds without heavy Android mocks or Robolectric.
+- **Repository Validation:** Full test coverage for limit checks, active snooze calculations, warning thresholds (80%), and 90-day retention pruning.
+- **Precision Time Tests:** Validates the 4:00 AM boundary logic across midnight, leap years, and edge-case timestamps.
+
 ---
 
 ## Privacy & Zero-Network Guarantee
@@ -87,8 +92,12 @@ graph TD
         Worker["DailyResetWorker<br/>(4 AM Daily Reset & Pruning)"]
     end
 
+    subgraph Core ["Dependency Management"]
+        App["SyncOnApp<br/>(Centralized Repository Provider)"]
+    end
+
     subgraph Domain ["Repository & Utilities"]
-        Repo["UsageRepository"]
+        Repo["UsageRepository<br/>(Business Logic & Gap Reconciliation)"]
         DayCalc["UsageDayCalculator<br/>(4 AM Boundary Engine)"]
         CatMap["CategoryMapper"]
         Notif["NotificationHelper"]
@@ -103,6 +112,7 @@ graph TD
         BlockEventTbl["BlockEvent"]
     end
 
+    App -.-> Repo
     UI --> Repo
     Service --> Repo
     Service --> DayCalc
@@ -112,16 +122,22 @@ graph TD
     A11Y --> Notif
 ```
 
+### Architectural Highlights
+- **Centralized Repository Provider:** Application-level singleton container (`SyncOnApp.repository`) ensures consistent state across UI, services, and background workers without third-party DI reflection overhead.
+- **SQL-Level Aggregation:** Multi-day and category usage totals are computed directly in SQLite using native `SUM()` and `GROUP BY` queries in `DailyUsageDao`, minimizing memory footprints.
+- **Room Schema Versioning:** Database schemas are exported and version-controlled under `app/schemas/` to guarantee safe and deterministic migrations.
+
 ---
 
 ## Tech Stack
 
 | Component | Technology | Description |
 |---|---|---|
-| **Language** | [Kotlin 2.4](https://kotlinlang.org) | Modern idiomatic Kotlin with coroutines |
+| **Language** | [Kotlin 2.4](https://kotlinlang.org) | Modern idiomatic Kotlin with coroutines & Flow |
 | **UI Toolkit** | [Jetpack Compose (BOM 2026.03)](https://developer.android.com/jetpack/compose) | Declarative UI with Material Design 3 |
-| **Persistence** | [Room 2.8](https://developer.android.com/training/data-storage/room) | SQLite abstraction layer with KSP code generation |
+| **Persistence** | [Room 2.8](https://developer.android.com/training/data-storage/room) | SQLite abstraction layer with KSP code generation & tracked schemas |
 | **Background Work** | [WorkManager 2.10](https://developer.android.com/topic/libraries/architecture/workmanager) | Periodic 4 AM maintenance and retention cleanup |
+| **Testing** | JUnit 4, Kotlin Coroutines Test | Fast, pure JVM unit testing with zero-dependency fakes |
 | **System APIs** | `UsageStatsManager`, `AccessibilityService` | Real-time usage event monitoring and foreground detection |
 | **Tooling & Build** | Android Gradle Plugin 9.3, Gradle 9.7, Java 21 | Version catalog (`libs.versions.toml`) |
 
@@ -145,7 +161,7 @@ All queries for "today's usage", daily limits, warning states, and historical ch
 
 ## Permissions & Setup
 
-To deliver automated tracking and enforcement without root access, SyncOn requests three specialized Android permissions during onboarding:
+To deliver automated tracking and enforcement without root access, SyncOn requests specialized Android permissions during onboarding:
 
 1. **Usage Access (`PACKAGE_USAGE_STATS`)**:
    - Enables querying `UsageStatsManager` for foreground app session times.
@@ -161,34 +177,40 @@ To deliver automated tracking and enforcement without root access, SyncOn reques
 ## Project Structure
 
 ```
-com.yu.syncon/
-├── data/
-│   ├── local/
-│   │   ├── dao/             # Room DAOs (DailyUsage, AppInfo, Limits, etc.)
-│   │   ├── entity/          # Room @Entity schemas
-│   │   └── AppDatabase.kt   # Database configuration & type converters
-│   └── repository/          # UsageRepository (data access abstraction)
-├── service/
-│   ├── accessibility/       # BlockAccessibilityService (real-time blocking)
-│   ├── receiver/            # BootReceiver (boot listener)
-│   ├── tracking/            # ForegroundTrackingService (tracking loop)
-│   └── worker/              # DailyResetWorker (4 AM maintenance)
-├── ui/
-│   ├── appdetail/           # Per-app limit configuration
-│   ├── applist/             # Installed apps with category filters
-│   ├── blocked/             # Fullscreen blocking overlay screen
-│   ├── components/          # Reusable Compose charts and controls
-│   ├── dashboard/           # Today's metrics and summary
-│   ├── navigation/          # Compose Navigation routes
-│   ├── onboarding/          # Step-by-step permissions flow
-│   ├── settings/            # App settings and permission status
-│   ├── theme/               # Material 3 colors, typography, shapes
-│   └── trends/              # 7-day and 30-day analytics charts
-└── util/
-    ├── CategoryMapper.kt    # Default category mapping
-    ├── NotificationHelper.kt# Heads-up limit warning notifications
-    ├── PermissionUtils.kt   # App-ops and permission checkers
-    └── UsageDayCalculator.kt# 4 AM boundary calculation engine
+syncon/
+├── app/
+│   ├── schemas/             # Versioned Room database schemas (JSON)
+│   └── src/
+│       ├── main/java/com/yu/syncon/
+│       │   ├── data/
+│       │   │   ├── local/
+│       │   │   │   ├── dao/             # Room DAOs (DailyUsage, AppInfo, Limits, etc.)
+│       │   │   │   ├── entity/          # Room @Entity schemas
+│       │   │   │   └── AppDatabase.kt   # Database configuration & type converters
+│       │   │   └── repository/          # UsageRepository (data access & business logic)
+│       │   ├── service/
+│       │   │   ├── accessibility/       # BlockAccessibilityService (real-time blocking)
+│       │   │   ├── receiver/            # BootReceiver (boot listener)
+│       │   │   ├── tracking/            # ForegroundTrackingService (5-min tracking loop)
+│       │   │   └── worker/              # DailyResetWorker (4 AM maintenance)
+│       │   ├── ui/
+│       │   │   ├── appdetail/           # Per-app limit configuration
+│       │   │   ├── applist/             # Installed apps with category filters
+│       │   │   ├── blocked/             # Fullscreen blocking overlay screen
+│       │   │   ├── components/          # Reusable Compose charts and controls
+│       │   │   ├── dashboard/           # Today's metrics and summary
+│       │   │   ├── navigation/          # Compose Navigation routes
+│       │   │   ├── onboarding/          # Step-by-step permissions flow
+│       │   │   ├── settings/            # App settings and permission status
+│       │   │   ├── theme/               # Material 3 colors, typography, shapes
+│       │   │   └── trends/              # 7-day and 30-day analytics charts
+│       │   ├── util/
+│       │   │   ├── CategoryMapper.kt    # Default category mapping
+│       │   │   ├── NotificationHelper.kt# Heads-up limit warning notifications
+│       │   │   ├── PermissionUtils.kt   # App-ops and permission checkers
+│       │   │   └── UsageDayCalculator.kt# 4 AM boundary calculation engine
+│       │   └── SyncOnApp.kt             # Application class & centralized repository provider
+│       └── test/java/com/yu/syncon/     # Unit tests (UsageRepository, Calculator, Mapper)
 ```
 
 ---
@@ -208,14 +230,14 @@ com.yu.syncon/
    cd syncon
    ```
 
-2. **Build Debug APK:**
-   ```bash
-   ./gradlew assembleDebug
-   ```
-
-3. **Run Unit Tests:**
+2. **Run Automated Unit Tests:**
    ```bash
    ./gradlew test
+   ```
+
+3. **Build Debug APK:**
+   ```bash
+   ./gradlew assembleDebug
    ```
 
 4. **Install on connected device via ADB:**
