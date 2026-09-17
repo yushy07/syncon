@@ -12,6 +12,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class BlockAccessibilityService : AccessibilityService() {
@@ -29,41 +31,59 @@ class BlockAccessibilityService : AccessibilityService() {
         Log.i(TAG, "BlockAccessibilityService created")
     }
 
+    private var liveCountdownJob: kotlinx.coroutines.Job? = null
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event?.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
 
         val targetPackage = event.packageName?.toString() ?: return
         // Never block our own app or common system UI elements
-        if (targetPackage == packageName || targetPackage == "com.android.systemui") return
+        if (targetPackage == packageName || targetPackage == "com.android.systemui") {
+            liveCountdownJob?.cancel()
+            repository.setCurrentForegroundApp(null)
+            return
+        }
 
-        serviceScope.launch {
+        liveCountdownJob?.cancel()
+        repository.setCurrentForegroundApp(targetPackage)
+
+        liveCountdownJob = serviceScope.launch {
             try {
-                val result = repository.checkAppLimit(targetPackage) ?: return@launch
+                // Immediate check on entry
+                val initialResult = repository.checkAppLimit(targetPackage) ?: return@launch
 
-                if (result.shouldWarn) {
-                    Log.i(TAG, "Showing limit warning for $targetPackage (${result.remainingMinutes} min remaining)")
+                if (initialResult.shouldBlock) {
+                    enforceBlock(targetPackage, initialResult)
+                    return@launch
+                }
+
+                if (initialResult.shouldWarn) {
                     NotificationHelper.showWarningNotification(
                         applicationContext,
-                        result.appName,
-                        result.remainingMinutes
+                        initialResult.appName,
+                        initialResult.remainingMinutes
                     )
                     repository.markWarningShown(targetPackage)
                 }
 
-                if (result.shouldBlock) {
-                    Log.w(TAG, "Enforcing block for $targetPackage (Style: ${result.blockingStyle})")
-                    repository.markAppBlocked(targetPackage)
+                // Live countdown loop while user stays in this foreground app
+                while (isActive) {
+                    delay(10 * 1000L) // check every 10 seconds
+                    val check = repository.checkAppLimit(targetPackage) ?: break
 
-                    val intent = Intent(applicationContext, BlockedActivity::class.java).apply {
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                        putExtra(BlockedActivity.EXTRA_PACKAGE_NAME, targetPackage)
-                        putExtra(BlockedActivity.EXTRA_APP_NAME, result.appName)
-                        putExtra(BlockedActivity.EXTRA_BLOCKING_STYLE, result.blockingStyle)
-                        putExtra(BlockedActivity.EXTRA_SNOOZE_MINUTES, result.snoozeMinutes)
-                        putExtra(BlockedActivity.EXTRA_LIMIT_MINUTES, result.limitMinutes)
-                        putExtra(BlockedActivity.EXTRA_USED_MINUTES, result.usedMinutes)
+                    if (check.shouldWarn) {
+                        NotificationHelper.showWarningNotification(
+                            applicationContext,
+                            check.appName,
+                            check.remainingMinutes
+                        )
+                        repository.markWarningShown(targetPackage)
                     }
-                    startActivity(intent)
+
+                    if (check.shouldBlock) {
+                        enforceBlock(targetPackage, check)
+                        break
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error checking limit for package: $targetPackage", e)
@@ -71,7 +91,25 @@ class BlockAccessibilityService : AccessibilityService() {
         }
     }
 
-    override fun onInterrupt() {}
+    private suspend fun enforceBlock(targetPackage: String, result: UsageRepository.LimitCheckResult) {
+        Log.w(TAG, "Enforcing block for $targetPackage (Style: ${result.blockingStyle})")
+        repository.markAppBlocked(targetPackage)
+
+        val intent = Intent(applicationContext, BlockedActivity::class.java).apply {
+            setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            putExtra(BlockedActivity.EXTRA_PACKAGE_NAME, targetPackage)
+            putExtra(BlockedActivity.EXTRA_APP_NAME, result.appName)
+            putExtra(BlockedActivity.EXTRA_BLOCKING_STYLE, result.blockingStyle)
+            putExtra(BlockedActivity.EXTRA_SNOOZE_MINUTES, result.snoozeMinutes)
+            putExtra(BlockedActivity.EXTRA_LIMIT_MINUTES, result.limitMinutes)
+            putExtra(BlockedActivity.EXTRA_USED_MINUTES, result.usedMinutes)
+        }
+        startActivity(intent)
+    }
+
+    override fun onInterrupt() {
+        liveCountdownJob?.cancel()
+    }
 
     override fun onDestroy() {
         super.onDestroy()

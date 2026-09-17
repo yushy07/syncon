@@ -1,8 +1,13 @@
 package com.yu.syncon.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -255,6 +260,49 @@ fun ScreenHeader(
 }
 
 @Composable
+fun AppIcon(
+    packageName: String,
+    appName: String = "",
+    category: String = "Other",
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val categoryColor = getCategoryColor(category)
+
+    val iconBitmap = remember(packageName) {
+        try {
+            val drawable = context.packageManager.getApplicationIcon(packageName)
+            drawable.toBitmap(width = 120, height = 120).asImageBitmap()
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    if (iconBitmap != null) {
+        Image(
+            bitmap = iconBitmap,
+            contentDescription = appName,
+            modifier = modifier.clip(RoundedCornerShape(12.dp))
+        )
+    } else {
+        Box(
+            modifier = modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(categoryColor.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = appName.firstOrNull()?.uppercase() ?: "?",
+                style = MaterialTheme.typography.titleMedium.copy(
+                    color = categoryColor,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+        }
+    }
+}
+
+@Composable
 fun AppListRowItem(
     app: AppInfo,
     durationMinutes: Long,
@@ -280,22 +328,13 @@ fun AppListRowItem(
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // App Avatar Icon (using category color)
-            Box(
-                modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(categoryColor.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = app.appName.firstOrNull()?.uppercase() ?: "?",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        color = categoryColor,
-                        fontWeight = FontWeight.Bold
-                    )
-                )
-            }
+            // App Avatar Icon (using real system icon or category fallback)
+            AppIcon(
+                packageName = app.packageName,
+                appName = app.appName,
+                category = app.category,
+                modifier = Modifier.size(44.dp)
+            )
 
             Spacer(modifier = Modifier.width(14.dp))
 

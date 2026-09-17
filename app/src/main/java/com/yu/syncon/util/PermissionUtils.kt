@@ -122,4 +122,16 @@ object PermissionUtils {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
     }
+
+    /**
+     * Intent to open App Details / App Info screen.
+     * Essential on Android 13+ / Xiaomi for tapping 3 dots -> 'Allow restricted settings'
+     * so Accessibility can be enabled on sideloaded apps.
+     */
+    fun getAppDetailsIntent(context: Context): Intent {
+        return Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:${context.packageName}")
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+    }
 }

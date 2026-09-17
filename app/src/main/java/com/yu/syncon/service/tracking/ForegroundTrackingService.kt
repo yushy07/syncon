@@ -74,6 +74,35 @@ class ForegroundTrackingService : Service() {
                         repository.processUsageEvents(lastCheckTime, now)
                         lastCheckTime = now
                         Log.d(TAG, "Successfully processed usage tick up to $now")
+
+                        // PRD §7.1: runLimitCheckForCurrentForegroundApp()
+                        val currentFg = repository.currentForegroundPackage
+                        if (currentFg != null) {
+                            val limitCheck = repository.checkAppLimit(currentFg)
+                            if (limitCheck != null) {
+                                if (limitCheck.shouldWarn) {
+                                    NotificationHelper.showWarningNotification(
+                                        applicationContext,
+                                        limitCheck.appName,
+                                        limitCheck.remainingMinutes
+                                    )
+                                    repository.markWarningShown(currentFg)
+                                }
+                                if (limitCheck.shouldBlock) {
+                                    repository.markAppBlocked(currentFg)
+                                    val blockIntent = Intent(applicationContext, com.yu.syncon.ui.blocked.BlockedActivity::class.java).apply {
+                                        setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                                        putExtra(com.yu.syncon.ui.blocked.BlockedActivity.EXTRA_PACKAGE_NAME, currentFg)
+                                        putExtra(com.yu.syncon.ui.blocked.BlockedActivity.EXTRA_APP_NAME, limitCheck.appName)
+                                        putExtra(com.yu.syncon.ui.blocked.BlockedActivity.EXTRA_BLOCKING_STYLE, limitCheck.blockingStyle)
+                                        putExtra(com.yu.syncon.ui.blocked.BlockedActivity.EXTRA_SNOOZE_MINUTES, limitCheck.snoozeMinutes)
+                                        putExtra(com.yu.syncon.ui.blocked.BlockedActivity.EXTRA_LIMIT_MINUTES, limitCheck.limitMinutes)
+                                        putExtra(com.yu.syncon.ui.blocked.BlockedActivity.EXTRA_USED_MINUTES, limitCheck.usedMinutes)
+                                    }
+                                    startActivity(blockIntent)
+                                }
+                            }
+                        }
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to process usage events for window ($lastCheckTime, $now)", e)
                     }

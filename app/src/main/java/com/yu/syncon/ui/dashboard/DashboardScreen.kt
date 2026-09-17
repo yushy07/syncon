@@ -53,6 +53,7 @@ import com.yu.syncon.ui.components.WarningAlertBanner
 import com.yu.syncon.ui.theme.AccentCoral
 import com.yu.syncon.ui.theme.AccentCoralLight
 import com.yu.syncon.ui.theme.AccentSage
+import com.yu.syncon.ui.theme.AccentSageLight
 import com.yu.syncon.ui.theme.CardBorder
 import com.yu.syncon.ui.theme.CardShape
 import com.yu.syncon.ui.theme.CardSurface
@@ -75,7 +76,8 @@ enum class DashboardViewMode {
 @Composable
 fun DashboardScreen(
     repository: UsageRepository,
-    onAppClick: (String) -> Unit
+    onAppClick: (String) -> Unit,
+    onTrackingStatusClick: () -> Unit = {}
 ) {
     val totalMinutes by repository.getTodayTotalMinutesFlow().collectAsState(initial = 0L)
     val yesterdayMinutes by repository.getYesterdayTotalMinutesFlow().collectAsState(initial = 0L)
@@ -87,37 +89,25 @@ fun DashboardScreen(
     val limitsMap = remember(activeLimits) { activeLimits.associateBy { it.packageName } }
 
     var viewMode by remember { mutableStateOf(DashboardViewMode.ALL_APPS) }
-    var miniBarData by remember { mutableStateOf<List<MiniBarItem>>(emptyList()) }
+    var hourlyBars by remember { mutableStateOf<List<com.yu.syncon.ui.components.BarChartItem>>(emptyList()) }
 
-    // Load recent 7-day trend for mini-bars
+    // Screen 9: Load Today's 6 4-hour intervals (4AM, 8AM, 12PM, 4PM, 8PM, 12AM)
     LaunchedEffect(totalMinutes) {
-        val recentDates = UsageDayCalculator.getRecentUsageDates(7)
-        val usageMap = repository.getUsageForDates(recentDates)
-        val todayStr = UsageDayCalculator.getTodayUsageDate()
-
-        miniBarData = recentDates.map { dateStr ->
-            val date = LocalDate.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE)
-            val dayLabel = date.dayOfWeek.name.take(1)
-            val minutes = usageMap[dateStr] ?: 0L
-            MiniBarItem(
-                label = dayLabel,
-                valueMinutes = minutes,
-                isHighlighted = dateStr == todayStr
-            )
-        }
+        hourlyBars = repository.getTodayHourlyUsage()
     }
 
     val positiveUsages = todayUsages.filter { it.durationMinutes > 0 }.sortedByDescending { it.durationMinutes }
     val todayMins = totalMinutes ?: 0L
     val yestMins = yesterdayMinutes ?: 0L
 
-    // Screen 11: Identify approaching limit apps (within 80% of limit, or 5 min left)
+    // Screen 11: Identify approaching limit apps (within 80% of limit, or <= 5 min left)
     val approachingApps = positiveUsages.mapNotNull { usage ->
         val setting = limitsMap[usage.packageName]
         if (setting != null && setting.isEnabled && setting.dailyLimitMinutes != null) {
             val limit = setting.dailyLimitMinutes
             val used = usage.durationMinutes
-            if (used in (limit * 4 / 5)..limit) {
+            val remaining = limit - used
+            if ((used in (limit * 4 / 5)..limit) || remaining in 1..5) {
                 val app = appMap[usage.packageName] ?: AppInfo(usage.packageName, usage.packageName, "Other")
                 Triple(app, used, limit)
             } else null
@@ -133,7 +123,7 @@ fun DashboardScreen(
     ) {
         item {
             Spacer(modifier = Modifier.height(6.dp))
-            // Section Header
+            // Section Header + Tracking Active Status Button
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -141,33 +131,129 @@ fun DashboardScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Today",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-                Text(
-                    text = "4:00 AM – 4:00 AM",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
-                )
+                Column {
+                    Text(
+                        text = "Today",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "4:00 AM – 4:00 AM",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+
+                // Screen 41 Link: Status Chip
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50.dp))
+                        .background(AccentSageLight)
+                        .clickable(onClick = onTrackingStatusClick)
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(AccentSage)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Tracking active",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = AccentSage,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
             }
         }
 
-        // Screen 11: Approaching Limit Warning Banner
+        // Screen 11: Dedicated Approaching Limit Card
         if (approachingApps.isNotEmpty()) {
             item {
-                val firstApproaching = approachingApps.first()
-                val bannerText = if (approachingApps.size == 1) {
-                    "You're close to your limit on ${firstApproaching.first.appName}."
-                } else {
-                    "You're close to your limit on ${approachingApps.size} apps."
+                Card(
+                    shape = CardShape,
+                    colors = CardDefaults.cardColors(containerColor = AccentCoralLight),
+                    border = BorderStroke(1.dp, AccentCoral.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(AccentCoral.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = "Warning",
+                                    tint = AccentCoral,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                text = if (approachingApps.size == 1) {
+                                    "You're close to your limit on 1 app"
+                                } else {
+                                    "You're close to your limit on ${approachingApps.size} apps"
+                                },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = AccentCoral
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        approachingApps.forEach { (app, used, limit) ->
+                            val remaining = (limit - used).coerceAtLeast(0)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onAppClick(app.packageName) }
+                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                com.yu.syncon.ui.components.AppIcon(
+                                    packageName = app.packageName,
+                                    appName = app.appName,
+                                    category = app.category,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = app.appName,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = TextPrimary
+                                    )
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = "$used / ${limit}m",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = AccentCoral
+                                    )
+                                    Text(
+                                        text = "$remaining min left",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = AccentCoral
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
-                WarningAlertBanner(
-                    message = bannerText,
-                    onClick = { onAppClick(firstApproaching.first.packageName) }
-                )
             }
         }
 
@@ -176,7 +262,7 @@ fun DashboardScreen(
             TodayHeroCard(
                 todayMinutes = todayMins,
                 yesterdayMinutes = yestMins,
-                miniBarData = miniBarData
+                hourlyBars = hourlyBars
             )
         }
 
@@ -312,7 +398,7 @@ fun DashboardScreen(
 private fun TodayHeroCard(
     todayMinutes: Long,
     yesterdayMinutes: Long,
-    miniBarData: List<MiniBarItem>
+    hourlyBars: List<com.yu.syncon.ui.components.BarChartItem>
 ) {
     val hours = todayMinutes / 60
     val minutes = todayMinutes % 60
@@ -369,10 +455,11 @@ private fun TodayHeroCard(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Mini 7-day trend bars
-            if (miniBarData.isNotEmpty()) {
-                MiniBarRow(
-                    items = miniBarData,
+            // Screen 9: Today's Hourly Bars (4AM, 8AM, 12PM, 4PM, 8PM, 12AM)
+            if (hourlyBars.isNotEmpty()) {
+                com.yu.syncon.ui.components.UsageBarChart(
+                    items = hourlyBars,
+                    maxHeightDp = 100,
                     modifier = Modifier.fillMaxWidth()
                 )
             }

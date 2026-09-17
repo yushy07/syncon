@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.sp
 import com.yu.syncon.data.local.entity.AppInfo
 import com.yu.syncon.data.local.entity.AppLimitSettings
 import com.yu.syncon.data.repository.UsageRepository
+import com.yu.syncon.ui.components.AppIcon
 import com.yu.syncon.ui.components.MiniBarItem
 import com.yu.syncon.ui.components.MiniBarRow
 import com.yu.syncon.ui.components.PrimaryPillButton
@@ -103,16 +104,18 @@ fun AppDetailScreen(
     // App trend mini bars
     var appMiniBars by remember { mutableStateOf<List<MiniBarItem>>(emptyList()) }
 
-    LaunchedEffect(packageName) {
+    LaunchedEffect(packageName, todayUsage) {
         appInfo = repository.getAppInfo(packageName)
         val recentDates = UsageDayCalculator.getRecentUsageDates(7)
         val todayStr = UsageDayCalculator.getTodayUsageDate()
 
-        // Gather 7-day stats for this specific app
+        // Gather 7-day stats for this specific app from database
+        val appUsageByDate = repository.getAppUsageForDates(packageName, recentDates)
+
         val items = recentDates.map { dateStr ->
             val date = LocalDate.parse(dateStr, DateTimeFormatter.ISO_LOCAL_DATE)
             val dayLabel = date.dayOfWeek.name.take(1)
-            val minutes = if (dateStr == todayStr) todayUsage else 0L
+            val minutes = if (dateStr == todayStr) todayUsage else (appUsageByDate[dateStr] ?: 0L)
             MiniBarItem(
                 label = dayLabel,
                 valueMinutes = minutes,
@@ -176,21 +179,12 @@ fun AppDetailScreen(
                         .padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(72.dp)
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(categoryColor.copy(alpha = 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = appInfo?.appName?.firstOrNull()?.uppercase() ?: "?",
-                            style = MaterialTheme.typography.headlineLarge.copy(
-                                color = categoryColor,
-                                fontWeight = FontWeight.Bold
-                            )
-                        )
-                    }
+                    AppIcon(
+                        packageName = packageName,
+                        appName = appInfo?.appName ?: packageName,
+                        category = appInfo?.category ?: "Other",
+                        modifier = Modifier.size(72.dp)
+                    )
 
                     Spacer(modifier = Modifier.height(14.dp))
 

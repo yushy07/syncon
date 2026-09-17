@@ -14,6 +14,12 @@ interface DailyUsageDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrUpdate(dailyUsage: DailyUsage)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(usages: List<DailyUsage>)
+
+    @Query("SELECT COUNT(*) FROM daily_usage")
+    suspend fun getRowCount(): Int
+
     @Query("SELECT * FROM daily_usage WHERE packageName = :packageName AND usageDate = :usageDate LIMIT 1")
     suspend fun getUsage(packageName: String, usageDate: String): DailyUsage?
 

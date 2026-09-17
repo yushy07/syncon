@@ -72,6 +72,11 @@ class MainActivity : ComponentActivity() {
                         prefs.edit().putBoolean("onboarding_completed", true).apply()
                         isOnboardingCompleted = true
                         startTrackingServiceIfNeeded()
+                        lifecycleScope.launch {
+                            repository.reconcileGaps()
+                            repository.syncInstalledApps()
+                            repository.backfillHistoricalDataIfEmpty()
+                        }
                     },
                     onStartTrackingService = { startTrackingServiceIfNeeded() }
                 )
@@ -223,6 +228,9 @@ fun MainAppContent(
                     repository = repository,
                     onAppClick = { pkg ->
                         navController.navigate(Screen.AppDetail.createRoute(pkg))
+                    },
+                    onTrackingStatusClick = {
+                        navController.navigate(Screen.TrackingStatus.route)
                     }
                 )
             }
@@ -253,6 +261,11 @@ fun MainAppContent(
                     hasUsageAccess = hasUsageAccess,
                     isAccessibilityEnabled = isAccessibilityEnabled,
                     isBatteryOptimizationIgnored = isBatteryOptimizationIgnored
+                )
+            }
+            composable(Screen.TrackingStatus.route) {
+                com.yu.syncon.ui.extra.TrackingStatusScreen(
+                    onBack = { navController.popBackStack() }
                 )
             }
         }

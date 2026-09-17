@@ -7,6 +7,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -62,6 +63,8 @@ import com.yu.syncon.ui.components.OutlinedPillButton
 import com.yu.syncon.ui.components.PrimaryPillButton
 import com.yu.syncon.ui.components.SecondaryPillButton
 import com.yu.syncon.ui.components.TaglineItalicText
+import com.yu.syncon.ui.theme.AccentAmber
+import com.yu.syncon.ui.theme.AccentAmberLight
 import com.yu.syncon.ui.theme.AccentCoral
 import com.yu.syncon.ui.theme.AccentCoralLight
 import com.yu.syncon.ui.theme.AccentSage
@@ -69,6 +72,7 @@ import com.yu.syncon.ui.theme.AccentSageLight
 import com.yu.syncon.ui.theme.CardBorder
 import com.yu.syncon.ui.theme.CardShape
 import com.yu.syncon.ui.theme.CardSurface
+import com.yu.syncon.ui.theme.CardSurfaceVariant
 import com.yu.syncon.ui.theme.PrimaryIndigo
 import com.yu.syncon.ui.theme.PrimaryIndigoLight
 import com.yu.syncon.ui.theme.TextPrimary
@@ -138,6 +142,7 @@ fun OnboardingScreen(
                     isAccessibilityEnabled = isAccessibilityEnabled,
                     isBatteryOptimizationIgnored = isBatteryOptimizationIgnored,
                     grantedCount = grantedCount,
+                    onNavigateToStep = { step -> currentStep = step },
                     onContinue = { currentStep = 4 }
                 )
                 4 -> Screen4UsageAccess(
@@ -191,7 +196,7 @@ private fun Screen1Welcome(onGetStarted: () -> Unit) {
             Spacer(modifier = Modifier.height(32.dp))
 
             Text(
-                text = "SyncOn",
+                text = "Screentime Sync",
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -204,7 +209,7 @@ private fun Screen1Welcome(onGetStarted: () -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Track your time. Set limits. Build better habits.",
+                text = "Track · Limit · Focus · Live Better",
                 style = MaterialTheme.typography.bodyLarge,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
@@ -247,7 +252,7 @@ private fun Screen2HowItWorks(onContinue: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "SyncOn helps you stay mindful of your digital habits through 4 core principles.",
+                text = "Screentime Sync helps you stay mindful of your digital habits through 4 core principles.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary
             )
@@ -357,6 +362,7 @@ private fun Screen3PermissionsOverview(
     isAccessibilityEnabled: Boolean,
     isBatteryOptimizationIgnored: Boolean,
     grantedCount: Int,
+    onNavigateToStep: (Int) -> Unit,
     onContinue: () -> Unit
 ) {
     Column(
@@ -404,7 +410,7 @@ private fun Screen3PermissionsOverview(
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "To track usage and block apps offline, SyncOn needs these permissions. All data stays strictly on your device.",
+                text = "To track usage and block apps offline, Screentime Sync needs these permissions. All data stays strictly on your device.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary
             )
@@ -414,19 +420,22 @@ private fun Screen3PermissionsOverview(
             PermissionOverviewItem(
                 title = "Usage Access",
                 subtitle = "Reads foreground app usage durations locally",
-                isGranted = hasUsageAccess
+                isGranted = hasUsageAccess,
+                onClick = { onNavigateToStep(4) }
             )
             Spacer(modifier = Modifier.height(12.dp))
             PermissionOverviewItem(
                 title = "Accessibility",
                 subtitle = "Detects foreground app transitions to enforce limits",
-                isGranted = isAccessibilityEnabled
+                isGranted = isAccessibilityEnabled,
+                onClick = { onNavigateToStep(5) }
             )
             Spacer(modifier = Modifier.height(12.dp))
             PermissionOverviewItem(
                 title = "Battery Optimization",
                 subtitle = "Allows tracking to run reliably in the background",
-                isGranted = isBatteryOptimizationIgnored
+                isGranted = isBatteryOptimizationIgnored,
+                onClick = { onNavigateToStep(6) }
             )
         }
 
@@ -449,13 +458,16 @@ private fun Screen3PermissionsOverview(
 private fun PermissionOverviewItem(
     title: String,
     subtitle: String,
-    isGranted: Boolean
+    isGranted: Boolean,
+    onClick: () -> Unit
 ) {
     Card(
         shape = CardShape,
         colors = CardDefaults.cardColors(containerColor = CardSurface),
         border = BorderStroke(1.dp, CardBorder),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -540,7 +552,7 @@ private fun Screen4UsageAccess(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "This allows SyncOn to read foreground app durations via Android's local UsageStatsManager. No data ever leaves your device.",
+                text = "This allows Screentime Sync to read foreground app durations via Android's local UsageStatsManager. No data ever leaves your device.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary
             )
@@ -574,7 +586,7 @@ private fun Screen4UsageAccess(
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "SyncOn → Allow usage tracking",
+                        text = "Screentime Sync → Allow usage tracking",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = TextPrimary,
@@ -582,7 +594,7 @@ private fun Screen4UsageAccess(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Tap the button below, locate 'SyncOn' in the list, and turn the switch ON.",
+                        text = "Tap the button below, locate 'Screentime Sync' in the list, and turn the switch ON.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                         textAlign = TextAlign.Center
@@ -700,7 +712,7 @@ private fun Screen5Accessibility(
                     }
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
-                        text = "Downloaded Apps → SyncOn",
+                        text = "Downloaded Apps → Screentime Sync",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = TextPrimary,
@@ -708,7 +720,7 @@ private fun Screen5Accessibility(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Find 'SyncOn' under Downloaded / Installed apps, tap it, and enable the service switch.",
+                        text = "Find 'Screentime Sync' under Downloaded / Installed apps, tap it, and enable the service switch.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                         textAlign = TextAlign.Center
@@ -728,6 +740,48 @@ private fun Screen5Accessibility(
                             fontWeight = FontWeight.SemiBold
                         )
                     }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Xiaomi / Android 13+ Restricted Setting Notice
+            val context = LocalContext.current
+            Card(
+                shape = CardShape,
+                colors = CardDefaults.cardColors(containerColor = AccentAmberLight),
+                border = BorderStroke(1.dp, AccentAmber.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = AccentAmber,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Android 13+ / Xiaomi / HyperOS Tip",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "If Accessibility is grayed out or says \"Restricted setting\":\n1. Tap 'Open App Info' below\n2. Tap ⋮ (3 dots) in top-right corner\n3. Tap 'Allow restricted settings'\n4. Return here and enable Accessibility",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    SecondaryPillButton(
+                        text = "Open App Info (Allow Restricted)",
+                        onClick = {
+                            context.startActivity(PermissionUtils.getAppDetailsIntent(context))
+                        }
+                    )
                 }
             }
         }
@@ -833,7 +887,7 @@ private fun Screen6BackgroundRunning(
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Choose 'Allow' or 'Don't Optimize' when prompted so SyncOn stays active.",
+                        text = "Choose 'Allow' or 'Don't Optimize' when prompted so Screentime Sync stays active.",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextSecondary,
                         textAlign = TextAlign.Center
@@ -931,7 +985,7 @@ private fun Screen7Ready(onOpenApp: () -> Unit) {
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "SyncOn is ready to help you build better habits. Your data is stored locally and securely.",
+                text = "Screentime Sync is ready to help you build better habits. Your data is stored locally and securely.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
@@ -954,7 +1008,7 @@ private fun Screen7Ready(onOpenApp: () -> Unit) {
                 .padding(bottom = 32.dp)
         ) {
             PrimaryPillButton(
-                text = "Open SyncOn",
+                text = "Open Screentime Sync",
                 onClick = onOpenApp
             )
         }

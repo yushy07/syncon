@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
@@ -23,6 +24,7 @@ import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -252,11 +254,176 @@ fun TrackingActiveCard(
                     color = TextPrimary
                 )
                 Text(
-                    text = "Last updated $lastUpdatedMinutesAgo min ago • SyncOn is running in the background",
+                    text = "Last updated $lastUpdatedMinutesAgo min ago • Screentime Sync is running in the background",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )
             }
         }
+    }
+}
+
+// -------------------------------------------------------------
+// Screen 41: Dedicated Tracking Active Detail Screen
+// -------------------------------------------------------------
+@Composable
+fun TrackingStatusScreen(onBack: () -> Unit) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        // Header
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = TextPrimary
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "Tracking Status",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(88.dp)
+                        .clip(CircleShape)
+                        .background(AccentSageLight),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Tracking Active",
+                        tint = AccentSage,
+                        modifier = Modifier.size(52.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text(
+                    text = "Tracking is active",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "Screentime Sync is actively monitoring screen time and enforcing limits entirely on-device.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(28.dp))
+
+                // Detailed Health Indicators
+                Card(
+                    shape = CardShape,
+                    colors = CardDefaults.cardColors(containerColor = CardSurface),
+                    border = BorderStroke(1.dp, CardBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        TrackingHealthRow(
+                            label = "Usage Tracking Service",
+                            status = "Running (5m ticks)",
+                            isHealthy = true
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        TrackingHealthRow(
+                            label = "Accessibility Service",
+                            status = "Active (instant block)",
+                            isHealthy = true
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        TrackingHealthRow(
+                            label = "Usage Day Cycle",
+                            status = "4:00 AM – 4:00 AM",
+                            isHealthy = true
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        TrackingHealthRow(
+                            label = "Local Storage",
+                            status = "1,095 days offline retention",
+                            isHealthy = true
+                        )
+                    }
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                PrimaryPillButton(
+                    text = "Done",
+                    onClick = onBack
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrackingHealthRow(
+    label: String,
+    status: String,
+    isHealthy: Boolean
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = TextPrimary
+            )
+            Text(
+                text = status,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(if (isHealthy) AccentSage else AccentCoral)
+        )
     }
 }

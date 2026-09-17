@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yu.syncon.data.local.entity.AppInfo
 import com.yu.syncon.data.repository.UsageRepository
+import com.yu.syncon.ui.components.AppIcon
 import com.yu.syncon.ui.components.BarChartItem
 import com.yu.syncon.ui.components.CategoryDonutChart
 import com.yu.syncon.ui.components.CategoryShare
@@ -344,75 +345,90 @@ fun TrendsScreen(repository: UsageRepository) {
                     }
                 }
             } else {
-                // Screen 24: Ranked App Breakdown List
-                val maxMinutes = topApps.firstOrNull()?.second ?: 1L
-                items(topApps, key = { it.first.packageName }) { (app, mins) ->
-                    val color = getCategoryColor(app.category)
-                    val appHours = mins / 60
-                    val appMins = mins % 60
-                    val appTimeStr = if (appHours > 0) "${appHours}h ${appMins}m" else "${appMins}m"
-
-                    Card(
-                        shape = CardShape,
-                        colors = CardDefaults.cardColors(containerColor = CardSurface),
-                        border = BorderStroke(1.dp, CardBorder),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .background(color.copy(alpha = 0.15f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = app.appName.firstOrNull()?.uppercase() ?: "?",
-                                            style = MaterialTheme.typography.titleMedium.copy(
-                                                color = color,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Text(
-                                            text = app.appName,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = TextPrimary
-                                        )
-                                        Text(
-                                            text = app.category,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = TextSecondary
-                                        )
-                                    }
-                                }
-                                Text(
-                                    text = appTimeStr,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextPrimary
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-                            val progress = (mins.toFloat() / maxMinutes.coerceAtLeast(1L)).coerceIn(0f, 1f)
-                            LinearProgressIndicator(
-                                progress = { progress },
+                if (topApps.isEmpty()) {
+                    item {
+                        Card(
+                            shape = CardShape,
+                            colors = CardDefaults.cardColors(containerColor = CardSurface),
+                            border = BorderStroke(1.dp, CardBorder),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(6.dp)
-                                    .clip(RoundedCornerShape(3.dp)),
-                                color = color,
-                                trackColor = CardSurfaceVariant
-                            )
+                                    .padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "No app usage recorded yet for this period.",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = TextSecondary,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    val maxMinutes = topApps.firstOrNull()?.second ?: 1L
+                    items(topApps, key = { it.first.packageName }) { (app, mins) ->
+                        val color = getCategoryColor(app.category)
+                        val appHours = mins / 60
+                        val appMins = mins % 60
+                        val appTimeStr = if (appHours > 0) "${appHours}h ${appMins}m" else "${appMins}m"
+
+                        Card(
+                            shape = CardShape,
+                            colors = CardDefaults.cardColors(containerColor = CardSurface),
+                            border = BorderStroke(1.dp, CardBorder),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        AppIcon(
+                                            packageName = app.packageName,
+                                            appName = app.appName,
+                                            category = app.category,
+                                            modifier = Modifier.size(36.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text(
+                                                text = app.appName,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = TextPrimary
+                                            )
+                                            Text(
+                                                text = app.category,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = TextSecondary
+                                            )
+                                        }
+                                    }
+                                    Text(
+                                        text = appTimeStr,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TextPrimary
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                val progress = (mins.toFloat() / maxMinutes.coerceAtLeast(1L)).coerceIn(0f, 1f)
+                                LinearProgressIndicator(
+                                    progress = { progress },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(3.dp)),
+                                    color = color,
+                                    trackColor = CardSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }

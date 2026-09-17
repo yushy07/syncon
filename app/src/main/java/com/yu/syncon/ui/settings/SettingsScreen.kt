@@ -60,7 +60,10 @@ import com.yu.syncon.R
 import com.yu.syncon.service.worker.DailyResetWorker
 import com.yu.syncon.ui.components.OutlinedPillButton
 import com.yu.syncon.ui.components.PrimaryPillButton
+import com.yu.syncon.ui.components.SecondaryPillButton
 import com.yu.syncon.ui.components.TaglineItalicText
+import com.yu.syncon.ui.theme.AccentAmber
+import com.yu.syncon.ui.theme.AccentAmberLight
 import com.yu.syncon.ui.theme.AccentCoral
 import com.yu.syncon.ui.theme.AccentCoralLight
 import com.yu.syncon.ui.theme.AccentSage
@@ -317,6 +320,47 @@ private fun Screen33PermissionHealth(
                 onPreviewWarning = { onNavigateWarning(SettingsSubScreen.BACKGROUND_WARNING) }
             )
 
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Xiaomi / Android 13+ Restricted Setting Notice
+            Card(
+                shape = CardShape,
+                colors = CardDefaults.cardColors(containerColor = AccentAmberLight),
+                border = BorderStroke(1.dp, AccentAmber.copy(alpha = 0.4f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = AccentAmber,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Xiaomi / POCO / HyperOS Tip",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "If Accessibility is disabled with \"Restricted setting\":\n1. Tap 'Open App Info' below\n2. Tap ⋮ (3 dots) in top-right corner\n3. Tap 'Allow restricted settings'\n4. Return here to enable Accessibility",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    SecondaryPillButton(
+                        text = "Open App Info (Allow Restricted)",
+                        onClick = {
+                            context.startActivity(PermissionUtils.getAppDetailsIntent(context))
+                        }
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
@@ -495,7 +539,7 @@ private fun Screen38About(onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "SyncOn",
+                text = "Screentime Sync",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -511,7 +555,7 @@ private fun Screen38About(onBack: () -> Unit) {
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            TaglineItalicText(text = "\"Built for a more intentional you.\"")
+            TaglineItalicText(text = "\"Same phone. A more intentional you.\"")
 
             Spacer(modifier = Modifier.height(32.dp))
 

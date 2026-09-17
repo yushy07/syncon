@@ -102,6 +102,28 @@ class UsageRepository(
     }
 
     // ---------------------------------------------------------
+    // ---------------------------------------------------------
+    // In-memory Session Continuity & Live Tracking
+    // ---------------------------------------------------------
+    private val activeOpenSessions = mutableMapOf<String, Long>()
+    private val uncommittedMillis = mutableMapOf<Pair<String, String>, Long>()
+    
+    @Volatile
+    var currentForegroundPackage: String? = null
+        private set
+    @Volatile
+    var currentForegroundSessionStartMs: Long = 0L
+        private set
+
+    fun setCurrentForegroundApp(packageName: String?) {
+        val now = System.currentTimeMillis()
+        if (currentForegroundPackage != packageName) {
+            currentForegroundPackage = packageName
+            currentForegroundSessionStartMs = now
+        }
+    }
+
+    // ---------------------------------------------------------
     // Usage Tracking & Events Processing
     // ---------------------------------------------------------
 
@@ -115,10 +137,14 @@ class UsageRepository(
         val events = mgr.queryEvents(startTimeMs, endTimeMs)
         val event = UsageEvents.Event()
 
-        // Track foreground sessions per package: packageName -> lastResumeTimestamp
-        val openSessions = mutableMapOf<String, Long>()
         // Accumulate durations per (packageName, usageDate)
         val durationMap = mutableMapOf<Pair<String, String>, Long>()
+
+        // Carry forward any sessions already open prior to this tick
+        val openSessions = mutableMapOf<String, Long>()
+        synchronized(activeOpenSessions) {
+            openSessions.putAll(activeOpenSessions)
+        }
 
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
@@ -157,11 +183,23 @@ class UsageRepository(
             }
         }
 
+        // Save open sessions back to memory with updated baseline
+        synchronized(activeOpenSessions) {
+            activeOpenSessions.clear()
+            for (pkg in openSessions.keys) {
+                activeOpenSessions[pkg] = endTimeMs
+            }
+        }
+
         val now = System.currentTimeMillis()
-        // Commit usage to database
+        // Commit usage to database with fractional millisecond preservation
         for ((key, durationMs) in durationMap) {
             val (pkg, usageDate) = key
-            val durationMinutes = durationMs / 60000L
+            val totalMs = (uncommittedMillis[key] ?: 0L) + durationMs
+            val durationMinutes = totalMs / 60000L
+            val remainderMs = totalMs % 60000L
+            uncommittedMillis[key] = remainderMs
+
             if (durationMinutes > 0L) {
                 dailyUsageDao.addUsageMinutes(pkg, usageDate, durationMinutes, now)
             }
@@ -171,14 +209,142 @@ class UsageRepository(
         appConfigDao.set(AppConfig("last_synced_at", endTimeMs.toString()))
     }
 
+    /**
+     * Backfills historical daily usage for the last 30 days if the database has no past records.
+     * Uses UsageStatsManager.queryUsageStats so that the user immediately gets real charts on install.
+     */
+    suspend fun backfillHistoricalDataIfEmpty() = withContext(Dispatchers.IO) {
+        val mgr = usageStatsManager ?: return@withContext
+        val existingCount = dailyUsageDao.getRowCount()
+        if (existingCount > 5) return@withContext // Already populated
+
+        syncInstalledApps()
+
+        val recentDates = UsageDayCalculator.getRecentUsageDates(30)
+        val todayStr = UsageDayCalculator.getTodayUsageDate()
+        val now = System.currentTimeMillis()
+        val newUsages = mutableListOf<DailyUsage>()
+
+        for (dateStr in recentDates) {
+            if (dateStr == todayStr) continue // Today is populated via queryEvents in reconcileGaps
+            val (startMs, endMs) = UsageDayCalculator.getUsageDayRange(dateStr)
+            val stats = try {
+                mgr.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startMs, endMs)
+            } catch (_: Exception) {
+                emptyList()
+            }
+
+            for (stat in stats) {
+                val totalTimeMs = stat.totalTimeInForeground
+                val minutes = totalTimeMs / 60000L
+                if (minutes > 0) {
+                    newUsages.add(
+                        DailyUsage(
+                            packageName = stat.packageName,
+                            usageDate = dateStr,
+                            durationMinutes = minutes,
+                            lastUpdatedAt = now
+                        )
+                    )
+                }
+            }
+        }
+
+        if (newUsages.isNotEmpty()) {
+            dailyUsageDao.insertAll(newUsages)
+        }
+    }
+
+    /**
+     * Reconciles usage gaps since the last sync time.
+     * If this is first launch or a gap > 6 min, reads system events up to current time.
+     * Defaults to beginning of today's usage-day (4:00 AM) so all of today's usage is captured!
+     */
     suspend fun reconcileGaps() = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        val lastSyncedStr = appConfigDao.get("last_synced_at")
-        val lastSynced = lastSyncedStr?.toLongOrNull() ?: (now - 5 * 60 * 1000L)
+        val today = UsageDayCalculator.getTodayUsageDate()
+        val (todayStartMs, _) = UsageDayCalculator.getUsageDayRange(today)
 
-        // If more than 6 minutes elapsed since last sync, backfill the gap
-        if (now - lastSynced > 6 * 60 * 1000L) {
-            processUsageEvents(lastSynced, now)
+        val lastSyncedStr = appConfigDao.get("last_synced_at")
+        val lastSynced = lastSyncedStr?.toLongOrNull()
+
+        // First run or past day: start from 4 AM today
+        val syncStart = if (lastSynced == null || lastSynced < todayStartMs) {
+            todayStartMs
+        } else {
+            lastSynced
+        }
+
+        if (now - syncStart > 60 * 1000L) { // If more than 1 minute gap
+            processUsageEvents(syncStart, now)
+        }
+
+        // Backfill 30 days if needed
+        backfillHistoricalDataIfEmpty()
+    }
+
+    /**
+     * Computes today's usage distribution across 6 4-hour intervals for Screen 9:
+     * 4AM, 8AM, 12PM, 4PM, 8PM, 12AM.
+     */
+    suspend fun getTodayHourlyUsage(): List<com.yu.syncon.ui.components.BarChartItem> = withContext(Dispatchers.IO) {
+        val mgr = usageStatsManager ?: return@withContext emptyList()
+        val today = UsageDayCalculator.getTodayUsageDate()
+        val (startOfDayMs, _) = UsageDayCalculator.getUsageDayRange(today)
+        val now = System.currentTimeMillis()
+
+        // 6 4-hour buckets
+        val bucketLabels = listOf("4AM", "8AM", "12PM", "4PM", "8PM", "12AM")
+        val bucketDurations = LongArray(6) { 0L }
+        val bucketDurationMs = 4 * 60 * 60 * 1000L // 4 hours in ms
+
+        val currentBucketIndex = ((now - startOfDayMs) / bucketDurationMs).toInt().coerceIn(0, 5)
+
+        val events = try {
+            mgr.queryEvents(startOfDayMs, now)
+        } catch (_: Exception) {
+            null
+        }
+
+        if (events != null) {
+            val event = UsageEvents.Event()
+            val sessions = mutableMapOf<String, Long>()
+
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                val pkg = event.packageName ?: continue
+                val time = event.timeStamp
+                val isResume = (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED || event.eventType == 1)
+                val isPause = (event.eventType == UsageEvents.Event.ACTIVITY_PAUSED || event.eventType == 2)
+
+                if (isResume) {
+                    sessions[pkg] = time
+                } else if (isPause) {
+                    val resumeTime = sessions.remove(pkg)
+                    if (resumeTime != null && time > resumeTime) {
+                        val duration = time - resumeTime
+                        val bIdx = ((resumeTime - startOfDayMs) / bucketDurationMs).toInt().coerceIn(0, 5)
+                        bucketDurations[bIdx] += duration
+                    }
+                }
+            }
+
+            for ((_, resumeTime) in sessions) {
+                if (now > resumeTime) {
+                    val duration = now - resumeTime
+                    val bIdx = ((resumeTime - startOfDayMs) / bucketDurationMs).toInt().coerceIn(0, 5)
+                    bucketDurations[bIdx] += duration
+                }
+            }
+        }
+
+        bucketLabels.mapIndexed { idx, label ->
+            val minutes = bucketDurations[idx] / 60000L
+            com.yu.syncon.ui.components.BarChartItem(
+                label = label,
+                valueMinutes = minutes,
+                isHighlighted = idx == currentBucketIndex
+            )
         }
     }
 
@@ -205,7 +371,15 @@ class UsageRepository(
         val today = UsageDayCalculator.getTodayUsageDate()
         val dailyState = appDailyStateDao.getOrCreateState(packageName, today)
         val usage = dailyUsageDao.getUsage(packageName, today)
-        val usedMinutes = usage?.durationMinutes?.toInt() ?: 0
+        var usedMinutes = usage?.durationMinutes?.toInt() ?: 0
+
+        // Include current in-progress foreground session minutes if checking the active app
+        if (packageName == currentForegroundPackage && currentForegroundSessionStartMs > 0L) {
+            val liveMs = System.currentTimeMillis() - currentForegroundSessionStartMs
+            if (liveMs > 0) {
+                usedMinutes += (liveMs / 60000L).toInt()
+            }
+        }
 
         val effectiveLimit = limit + dailyState.extraSnoozeMinutesUsedToday
         val remaining = effectiveLimit - usedMinutes
@@ -332,6 +506,14 @@ class UsageRepository(
         val endDate = dates.maxOrNull() ?: return@withContext emptyMap()
         val totals = dailyUsageDao.getUsageTotalsByDate(startDate, endDate).associate { it.usageDate to it.totalMinutes }
         dates.associateWith { date -> totals[date] ?: 0L }
+    }
+
+    suspend fun getAppUsageForDates(packageName: String, dates: List<String>): Map<String, Long> = withContext(Dispatchers.IO) {
+        if (dates.isEmpty()) return@withContext emptyMap()
+        val startDate = dates.minOrNull() ?: return@withContext emptyMap()
+        val endDate = dates.maxOrNull() ?: return@withContext emptyMap()
+        val usages = dailyUsageDao.getAppUsageBetweenDates(packageName, startDate, endDate).associate { it.usageDate to it.durationMinutes }
+        dates.associateWith { date -> usages[date] ?: 0L }
     }
 
     suspend fun getTopAppsBetweenDates(startDate: String, endDate: String): List<Pair<AppInfo, Long>> =
