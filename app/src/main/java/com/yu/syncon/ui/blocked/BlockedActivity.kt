@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yu.syncon.SyncOnApp
 import com.yu.syncon.data.repository.UsageRepository
 import com.yu.syncon.ui.components.OutlinedPillButton
 import com.yu.syncon.ui.components.PrimaryPillButton
@@ -78,7 +79,7 @@ class BlockedActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        repository = UsageRepository(applicationContext)
+        repository = (applicationContext as? SyncOnApp)?.repository ?: UsageRepository(applicationContext)
 
         onBackPressedDispatcher.addCallback(this) {
             navigateHome()

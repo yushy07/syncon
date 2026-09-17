@@ -60,6 +60,22 @@ interface DailyUsageDao {
         }
     }
 
+    @Query("SELECT usageDate, SUM(durationMinutes) AS totalMinutes FROM daily_usage WHERE usageDate >= :startDate AND usageDate <= :endDate GROUP BY usageDate")
+    suspend fun getUsageTotalsByDate(startDate: String, endDate: String): List<DateUsageTotal>
+
+    @Query("SELECT packageName, SUM(durationMinutes) AS totalMinutes FROM daily_usage WHERE usageDate >= :startDate AND usageDate <= :endDate GROUP BY packageName ORDER BY totalMinutes DESC")
+    suspend fun getTopAppTotalsBetweenDates(startDate: String, endDate: String): List<AppUsageTotal>
+
     @Query("DELETE FROM daily_usage WHERE usageDate < :cutoffDate")
     suspend fun deleteOlderThan(cutoffDate: String): Int
 }
+
+data class DateUsageTotal(
+    val usageDate: String,
+    val totalMinutes: Long
+)
+
+data class AppUsageTotal(
+    val packageName: String,
+    val totalMinutes: Long
+)

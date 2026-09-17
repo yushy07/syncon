@@ -7,6 +7,12 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import com.yu.syncon.data.local.AppDatabase
+import com.yu.syncon.data.local.dao.AppConfigDao
+import com.yu.syncon.data.local.dao.AppDailyStateDao
+import com.yu.syncon.data.local.dao.AppInfoDao
+import com.yu.syncon.data.local.dao.AppLimitSettingsDao
+import com.yu.syncon.data.local.dao.BlockEventDao
+import com.yu.syncon.data.local.dao.DailyUsageDao
 import com.yu.syncon.data.local.entity.AppConfig
 import com.yu.syncon.data.local.entity.AppDailyState
 import com.yu.syncon.data.local.entity.AppInfo
@@ -22,25 +28,26 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 class UsageRepository(
-    private val context: Context,
-    private val database: AppDatabase = AppDatabase.getInstance(context)
+    private val context: Context? = null,
+    private val database: AppDatabase? = context?.let { AppDatabase.getInstance(it) },
+    private val appInfoDao: AppInfoDao = database?.appInfoDao() ?: error("appInfoDao required"),
+    private val dailyUsageDao: DailyUsageDao = database?.dailyUsageDao() ?: error("dailyUsageDao required"),
+    private val appLimitSettingsDao: AppLimitSettingsDao = database?.appLimitSettingsDao() ?: error("appLimitSettingsDao required"),
+    private val appDailyStateDao: AppDailyStateDao = database?.appDailyStateDao() ?: error("appDailyStateDao required"),
+    private val blockEventDao: BlockEventDao = database?.blockEventDao() ?: error("blockEventDao required"),
+    private val appConfigDao: AppConfigDao = database?.appConfigDao() ?: error("appConfigDao required")
 ) {
-    private val appInfoDao = database.appInfoDao()
-    private val dailyUsageDao = database.dailyUsageDao()
-    private val appLimitSettingsDao = database.appLimitSettingsDao()
-    private val appDailyStateDao = database.appDailyStateDao()
-    private val blockEventDao = database.blockEventDao()
-    private val appConfigDao = database.appConfigDao()
 
-    private val usageStatsManager =
-        context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+    private val usageStatsManager: UsageStatsManager? by lazy {
+        context?.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
+    }
 
     // ---------------------------------------------------------
     // Installed Apps Sync
     // ---------------------------------------------------------
 
     suspend fun syncInstalledApps() = withContext(Dispatchers.IO) {
-        val packageManager = context.packageManager
+        val packageManager = context?.packageManager ?: return@withContext
         val installedApps = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 packageManager.getInstalledApplications(PackageManager.ApplicationInfoFlags.of(0L))
@@ -323,24 +330,19 @@ class UsageRepository(
         if (dates.isEmpty()) return@withContext emptyMap()
         val startDate = dates.minOrNull() ?: return@withContext emptyMap()
         val endDate = dates.maxOrNull() ?: return@withContext emptyMap()
-        val usages = dailyUsageDao.getUsageBetweenDatesStatic(startDate, endDate)
-        val resultMap = mutableMapOf<String, Long>()
-        for (date in dates) {
-            resultMap[date] = usages.filter { it.usageDate == date }.sumOf { it.durationMinutes }
-        }
-        resultMap
+        val totals = dailyUsageDao.getUsageTotalsByDate(startDate, endDate).associate { it.usageDate to it.totalMinutes }
+        dates.associateWith { date -> totals[date] ?: 0L }
     }
 
     suspend fun getTopAppsBetweenDates(startDate: String, endDate: String): List<Pair<AppInfo, Long>> =
         withContext(Dispatchers.IO) {
-            val usages = dailyUsageDao.getUsageBetweenDatesStatic(startDate, endDate)
+            val appTotals = dailyUsageDao.getTopAppTotalsBetweenDates(startDate, endDate)
+            if (appTotals.isEmpty()) return@withContext emptyList()
             val apps = appInfoDao.getAllStatic().associateBy { it.packageName }
-            usages.groupBy { it.packageName }
-                .mapNotNull { (pkg, list) ->
-                    val app = apps[pkg] ?: AppInfo(pkg, pkg, "Other")
-                    val totalMinutes = list.sumOf { it.durationMinutes }
-                    if (totalMinutes > 0) Pair(app, totalMinutes) else null
-                }
-                .sortedByDescending { it.second }
+            appTotals.mapNotNull { total ->
+                if (total.totalMinutes <= 0) return@mapNotNull null
+                val app = apps[total.packageName] ?: AppInfo(total.packageName, total.packageName, "Other")
+                Pair(app, total.totalMinutes)
+            }
         }
 }

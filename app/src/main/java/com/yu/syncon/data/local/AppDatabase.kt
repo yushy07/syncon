@@ -27,7 +27,7 @@ import com.yu.syncon.data.local.entity.DailyUsage
         AppConfig::class
     ],
     version = 1,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
 
@@ -49,7 +49,9 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "syncon.db"
                 )
-                // Note: For future schema migrations, add .addMigrations(...) here
+                // Safety policy: if sideloading an older build, avoid crash on schema downgrade
+                .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
+                // For future schema version upgrades (e.g. 1 -> 2), add .addMigrations(MIGRATION_1_2) here
                 .build()
                 INSTANCE = instance
                 instance

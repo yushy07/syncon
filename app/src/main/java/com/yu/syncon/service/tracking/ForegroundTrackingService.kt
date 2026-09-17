@@ -5,6 +5,8 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
+import com.yu.syncon.SyncOnApp
 import com.yu.syncon.data.repository.UsageRepository
 import com.yu.syncon.util.NotificationHelper
 import kotlinx.coroutines.CoroutineScope
@@ -23,9 +25,13 @@ class ForegroundTrackingService : Service() {
 
     private var isTrackingStarted = false
 
+    companion object {
+        private const val TAG = "ForegroundTracking"
+    }
+
     override fun onCreate() {
         super.onCreate()
-        repository = UsageRepository(applicationContext)
+        repository = (applicationContext as? SyncOnApp)?.repository ?: UsageRepository(applicationContext)
         NotificationHelper.createNotificationChannels(this)
         lastCheckTime = System.currentTimeMillis() - (5 * 60 * 1000L)
 
@@ -46,14 +52,20 @@ class ForegroundTrackingService : Service() {
         } else {
             startForeground(NotificationHelper.TRACKING_NOTIFICATION_ID, notification)
         }
+        Log.i(TAG, "ForegroundTrackingService created and started in foreground")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!isTrackingStarted) {
             isTrackingStarted = true
             serviceScope.launch {
-                // Reconcile any gap that occurred before the service was started
-                repository.reconcileGaps()
+                try {
+                    // Reconcile any gap that occurred before the service was started
+                    repository.reconcileGaps()
+                    Log.d(TAG, "Initial gap reconciliation completed")
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed during initial gap reconciliation", e)
+                }
 
                 // 5-minute periodic tracking loop
                 while (isActive) {
@@ -61,8 +73,9 @@ class ForegroundTrackingService : Service() {
                     try {
                         repository.processUsageEvents(lastCheckTime, now)
                         lastCheckTime = now
-                    } catch (_: Exception) {
-                        // Fail-safe to ensure tracking coroutine doesn't terminate
+                        Log.d(TAG, "Successfully processed usage tick up to $now")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Failed to process usage events for window ($lastCheckTime, $now)", e)
                     }
                     delay(5 * 60 * 1000L) // 5 minutes
                 }

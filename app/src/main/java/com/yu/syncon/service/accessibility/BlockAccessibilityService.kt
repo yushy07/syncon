@@ -2,7 +2,9 @@ package com.yu.syncon.service.accessibility
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
+import com.yu.syncon.SyncOnApp
 import com.yu.syncon.data.repository.UsageRepository
 import com.yu.syncon.ui.blocked.BlockedActivity
 import com.yu.syncon.util.NotificationHelper
@@ -17,9 +19,14 @@ class BlockAccessibilityService : AccessibilityService() {
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private lateinit var repository: UsageRepository
 
+    companion object {
+        private const val TAG = "BlockAccessibility"
+    }
+
     override fun onCreate() {
         super.onCreate()
-        repository = UsageRepository(applicationContext)
+        repository = (applicationContext as? SyncOnApp)?.repository ?: UsageRepository(applicationContext)
+        Log.i(TAG, "BlockAccessibilityService created")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -34,6 +41,7 @@ class BlockAccessibilityService : AccessibilityService() {
                 val result = repository.checkAppLimit(targetPackage) ?: return@launch
 
                 if (result.shouldWarn) {
+                    Log.i(TAG, "Showing limit warning for $targetPackage (${result.remainingMinutes} min remaining)")
                     NotificationHelper.showWarningNotification(
                         applicationContext,
                         result.appName,
@@ -43,6 +51,7 @@ class BlockAccessibilityService : AccessibilityService() {
                 }
 
                 if (result.shouldBlock) {
+                    Log.w(TAG, "Enforcing block for $targetPackage (Style: ${result.blockingStyle})")
                     repository.markAppBlocked(targetPackage)
 
                     val intent = Intent(applicationContext, BlockedActivity::class.java).apply {
@@ -56,8 +65,8 @@ class BlockAccessibilityService : AccessibilityService() {
                     }
                     startActivity(intent)
                 }
-            } catch (_: Exception) {
-                // Ignore unexpected inspection exceptions
+            } catch (e: Exception) {
+                Log.e(TAG, "Error checking limit for package: $targetPackage", e)
             }
         }
     }

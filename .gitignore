@@ -16,7 +16,6 @@ out/
 build/
 app/build/
 **/build/
-schemas/
 
 # Gradle files
 .gradle/

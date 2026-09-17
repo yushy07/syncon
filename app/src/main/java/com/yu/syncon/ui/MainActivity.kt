@@ -30,6 +30,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.yu.syncon.SyncOnApp
 import com.yu.syncon.data.repository.UsageRepository
 import com.yu.syncon.service.tracking.ForegroundTrackingService
 import com.yu.syncon.ui.appdetail.AppDetailScreen
@@ -54,7 +55,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        repository = UsageRepository(applicationContext)
+        repository = (applicationContext as? SyncOnApp)?.repository ?: UsageRepository(applicationContext)
 
         val prefs = getSharedPreferences("syncon_prefs", Context.MODE_PRIVATE)
         isOnboardingCompleted = prefs.getBoolean("onboarding_completed", false)
