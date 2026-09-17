@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">SyncOn</string>
+    <string name="accessibility_service_description">Monitors foreground app changes to enforce your configured daily screen time limits and display warning notifications.</string>
+</resources>
