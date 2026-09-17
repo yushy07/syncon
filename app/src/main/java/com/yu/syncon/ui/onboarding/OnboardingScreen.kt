@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,10 +52,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yu.syncon.R
 import com.yu.syncon.ui.components.OutlinedPillButton
 import com.yu.syncon.ui.components.PrimaryPillButton
 import com.yu.syncon.ui.components.SecondaryPillButton
@@ -177,20 +180,13 @@ private fun Screen1Welcome(onGetStarted: () -> Unit) {
 
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             // App Logo Mark
-            Box(
+            Image(
+                painter = painterResource(id = R.drawable.ic_syncon_brand_logo),
+                contentDescription = "SyncOn Logo",
                 modifier = Modifier
                     .size(96.dp)
-                    .clip(RoundedCornerShape(28.dp))
-                    .background(PrimaryIndigoLight),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.HourglassEmpty,
-                    contentDescription = "SyncOn Logo",
-                    tint = PrimaryIndigo,
-                    modifier = Modifier.size(48.dp)
-                )
-            }
+                    .clip(RoundedCornerShape(26.dp))
+            )
 
             Spacer(modifier = Modifier.height(32.dp))
 

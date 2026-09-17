@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import com.yu.syncon.R
 import com.yu.syncon.ui.MainActivity
 
 object NotificationHelper {
@@ -28,19 +29,16 @@ object NotificationHelper {
             description = "Maintains ongoing background SyncOn tracking"
             setShowBadge(false)
         }
+        manager.createNotificationChannel(trackingChannel)
 
-        // High-importance channel for pre-limit warning notifications
+        // High-importance heads-up channel for 5-minute warnings
         val warningChannel = NotificationChannel(
             CHANNEL_WARNING_ID,
-            "App Limit Warnings",
+            "Approaching Limit Warnings",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
-            description = "Alerts when an app is approaching its daily limit"
-            enableVibration(true)
-            setShowBadge(true)
+            description = "Fires when you have 5 minutes remaining on an app"
         }
-
-        manager.createNotificationChannel(trackingChannel)
         manager.createNotificationChannel(warningChannel)
     }
 
@@ -56,7 +54,7 @@ object NotificationHelper {
         )
 
         return NotificationCompat.Builder(context, CHANNEL_TRACKING_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_recent_history)
+            .setSmallIcon(R.drawable.ic_stat_syncon)
             .setContentTitle("SyncOn Active")
             .setContentText("Monitoring screen time and limits locally")
             .setOngoing(true)

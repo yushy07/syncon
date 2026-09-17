@@ -1,6 +1,8 @@
-# SyncOn
-
 <div align="center">
+
+<img src="assets/icons/android-chrome-192x192.png" width="96" height="96" alt="SyncOn App Icon" />
+
+# SyncOn
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Android%2012%2B%20(API%2031%2B)-brightgreen.svg)](https://developer.android.com)
