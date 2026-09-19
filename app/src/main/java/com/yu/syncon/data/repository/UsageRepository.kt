@@ -114,7 +114,6 @@ class UsageRepository(
     // In-memory Session Continuity & Live Tracking
     // ---------------------------------------------------------
     private val activeOpenSessions = mutableMapOf<String, Long>()
-    private val uncommittedMillis = mutableMapOf<Pair<String, String>, Long>()
     
     @Volatile
     var currentForegroundPackage: String? = null
@@ -194,16 +193,12 @@ class UsageRepository(
         }
 
         val now = System.currentTimeMillis()
-        // Commit usage to database with fractional millisecond preservation
+        // Commit exact milliseconds. durationMinutes remains a derived compatibility value for
+        // the current UI while durationMillis is authoritative for future cross-device totals.
         for ((key, durationMs) in durationMap) {
             val (pkg, usageDate) = key
-            val totalMs = (uncommittedMillis[key] ?: 0L) + durationMs
-            val durationMinutes = totalMs / 60000L
-            val remainderMs = totalMs % 60000L
-            uncommittedMillis[key] = remainderMs
-
-            if (durationMinutes > 0L) {
-                dailyUsageDao.addUsageMinutes(pkg, usageDate, durationMinutes, now)
+            if (durationMs > 0L) {
+                dailyUsageDao.addUsageMillis(pkg, usageDate, durationMs, now)
             }
         }
 
@@ -829,6 +824,7 @@ class UsageRepository(
             obj.put("packageName", usage.packageName)
             obj.put("usageDate", usage.usageDate)
             obj.put("durationMinutes", usage.durationMinutes)
+            obj.put("durationMillis", usage.durationMillis)
             obj.put("lastUpdatedAt", usage.lastUpdatedAt)
             usageArray.put(obj)
         }
@@ -987,7 +983,11 @@ class UsageRepository(
                             packageName = obj.getString("packageName"),
                             usageDate = obj.getString("usageDate"),
                             durationMinutes = obj.getLong("durationMinutes"),
-                            lastUpdatedAt = obj.optLong("lastUpdatedAt", System.currentTimeMillis())
+                            lastUpdatedAt = obj.optLong("lastUpdatedAt", System.currentTimeMillis()),
+                            durationMillis = obj.optLong(
+                                "durationMillis",
+                                obj.getLong("durationMinutes") * 60_000L
+                            )
                         )
                     )
                 }

@@ -45,22 +45,27 @@ interface DailyUsageDao {
     suspend fun getTotalMinutesForDateStatic(usageDate: String): Long?
 
     @Transaction
-    suspend fun addUsageMinutes(packageName: String, usageDate: String, additionalMinutes: Long, updatedAt: Long) {
+    suspend fun addUsageMillis(packageName: String, usageDate: String, additionalMillis: Long, updatedAt: Long) {
+        if (additionalMillis <= 0L) return
         val existing = getUsage(packageName, usageDate)
         if (existing == null) {
+            val totalMillis = additionalMillis
             insertOrUpdate(
                 DailyUsage(
                     packageName = packageName,
                     usageDate = usageDate,
-                    durationMinutes = additionalMinutes,
-                    lastUpdatedAt = updatedAt
+                    durationMinutes = totalMillis / 60_000L,
+                    lastUpdatedAt = updatedAt,
+                    durationMillis = totalMillis
                 )
             )
         } else {
+            val totalMillis = existing.durationMillis + additionalMillis
             insertOrUpdate(
                 existing.copy(
-                    durationMinutes = existing.durationMinutes + additionalMinutes,
-                    lastUpdatedAt = updatedAt
+                    durationMinutes = totalMillis / 60_000L,
+                    lastUpdatedAt = updatedAt,
+                    durationMillis = totalMillis
                 )
             )
         }

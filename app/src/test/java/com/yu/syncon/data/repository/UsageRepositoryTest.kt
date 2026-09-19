@@ -299,6 +299,19 @@ class UsageRepositoryTest {
     }
 
     @Test
+    fun `daily usage preserves sub-minute precision`() = runTest {
+        val today = UsageDayCalculator.getTodayUsageDate()
+
+        dailyUsageDao.addUsageMillis("com.test.app", today, 30_500L, nowMs)
+        dailyUsageDao.addUsageMillis("com.test.app", today, 30_500L, nowMs + 1_000L)
+
+        val usage = dailyUsageDao.getUsage("com.test.app", today)
+        assertNotNull(usage)
+        assertEquals(61_000L, usage!!.durationMillis)
+        assertEquals(1L, usage.durationMinutes)
+    }
+
+    @Test
     fun testExportAndImportData() = runTest {
         val today = UsageDayCalculator.getTodayUsageDate()
         appInfoDao.insertOrIgnore(AppInfo("com.test.app", "Test App", "Browser"))
