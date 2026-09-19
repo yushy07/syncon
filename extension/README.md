@@ -19,12 +19,16 @@ The extension works without a build step and without a backend.
 - 4:00 AM usage-day boundary
 - Domain categories and manual overrides
 - Per-domain strict and soft limits
+- Shared category budgets
 - Snooze support
+- Native remaining-time warnings
+- Clean-day streaks
 - 7, 14, and 30 day trends
 - Versioned JSON export/import
 - Three-year local retention
-- Stable installation and interval IDs
+- Stable installation, interval, and settings IDs
 - Cross-platform-ready timestamps and local sync metadata
+- IndexedDB interval storage with Manifest V3 worker-session recovery
 
 ## Privacy
 

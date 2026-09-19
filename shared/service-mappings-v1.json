@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "services": [
+    { "logicalServiceId": "youtube", "displayName": "YouTube", "androidPackages": ["com.google.android.youtube"], "chromeDomains": ["youtube.com", "youtu.be"] },
+    { "logicalServiceId": "instagram", "displayName": "Instagram", "androidPackages": ["com.instagram.android"], "chromeDomains": ["instagram.com"] },
+    { "logicalServiceId": "facebook", "displayName": "Facebook", "androidPackages": ["com.facebook.katana"], "chromeDomains": ["facebook.com"] },
+    { "logicalServiceId": "reddit", "displayName": "Reddit", "androidPackages": ["com.reddit.frontpage"], "chromeDomains": ["reddit.com"] },
+    { "logicalServiceId": "x-twitter", "displayName": "X", "androidPackages": ["com.twitter.android"], "chromeDomains": ["x.com", "twitter.com"] },
+    { "logicalServiceId": "netflix", "displayName": "Netflix", "androidPackages": ["com.netflix.mediaclient"], "chromeDomains": ["netflix.com"] },
+    { "logicalServiceId": "spotify", "displayName": "Spotify", "androidPackages": ["com.spotify.music"], "chromeDomains": ["spotify.com", "open.spotify.com"] },
+    { "logicalServiceId": "whatsapp", "displayName": "WhatsApp", "androidPackages": ["com.whatsapp"], "chromeDomains": ["web.whatsapp.com"] },
+    { "logicalServiceId": "discord", "displayName": "Discord", "androidPackages": ["com.discord"], "chromeDomains": ["discord.com"] },
+    { "logicalServiceId": "github", "displayName": "GitHub", "androidPackages": ["com.github.android"], "chromeDomains": ["github.com"] }
+  ]
+}

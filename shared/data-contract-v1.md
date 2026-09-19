@@ -35,6 +35,8 @@ This contract is implemented locally by the Android app and Chrome extension. It
 - Account dashboards should expose both summed device time and overlap-adjusted human time.
 - Manual categories override automatic categories.
 - The newest valid settings revision wins; usage intervals must not use last-write-wins replacement.
+- Logical service mappings are maintained separately in `service-mappings-v1.json`; raw source identities are never overwritten.
+- Cross-platform totals follow `cross-platform-policy-v1.md` and expose both summed device time and overlap-adjusted active span.
 
 ## Privacy boundary
 

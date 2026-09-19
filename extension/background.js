@@ -144,7 +144,10 @@ async function enforce(tab, suppliedState) {
   const limit = data.limits[active.domain];
   const category = data.domains[active.domain]?.category || C.categoryForDomain(active.domain);
   const categoryLimit = data.categoryLimits[category];
-  if (!limit?.enabled && !categoryLimit?.enabled) return;
+  if (!limit?.enabled && !categoryLimit?.enabled) {
+    await chrome.action.setBadgeText({ tabId: tab.id, text: "" });
+    return;
+  }
   const key = `${C.usageDate()}|${active.domain}`;
   const dailyState = data.dailyStates[key] || { warningShown: false, extraMinutes: 0 };
   const appEvaluation = C.evaluateLimit(await usedToday(active.domain, data), limit, dailyState);
@@ -172,6 +175,9 @@ async function enforce(tab, suppliedState) {
       title: categoryTriggered ? `${category} time is almost up` : `${active.domain} time is almost up`,
       message: `${evaluation.remainingMinutes} minute${evaluation.remainingMinutes === 1 ? "" : "s"} remaining today.`
     });
+  }
+  if (!evaluation.shouldWarn && !evaluation.shouldBlock) {
+    await chrome.action.setBadgeText({ tabId: tab.id, text: "" });
   }
 
   if (evaluation.shouldBlock && !tab.url?.startsWith(chrome.runtime.getURL("blocked/blocked.html"))) {
