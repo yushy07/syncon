@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.room.withTransaction
 import com.yu.syncon.data.local.AppDatabase
 import com.yu.syncon.data.local.dao.AppConfigDao
 import com.yu.syncon.data.local.dao.AppDailyStateDao
@@ -191,29 +192,32 @@ class UsageRepository(
             }
         }
 
-        // Save open sessions back to memory with updated baseline
+        val now = System.currentTimeMillis()
+        val commitUsage: suspend () -> Unit = {
+            // Commit exact milliseconds. durationMinutes remains a derived compatibility value
+            // for the UI while durationMillis is authoritative for cross-device totals.
+            for ((key, durationMs) in durationMap) {
+                val (pkg, usageDate) = key
+                if (durationMs > 0L) {
+                    dailyUsageDao.addUsageMillis(pkg, usageDate, durationMs, now)
+                }
+            }
+            if (intervals.isNotEmpty()) usageIntervalDao.insertAll(intervals)
+            // The cursor is part of the same transaction. A crash cannot advance it without data.
+            appConfigDao.set(AppConfig("last_synced_at", endTimeMs.toString()))
+        }
+
+        if (database != null) {
+            database.withTransaction { commitUsage() }
+        } else {
+            commitUsage()
+        }
+
+        // Advance the in-memory baseline only after the durable transaction succeeds.
         synchronized(activeOpenSessions) {
             activeOpenSessions.clear()
-            for (pkg in openSessions.keys) {
-                activeOpenSessions[pkg] = endTimeMs
-            }
+            for (pkg in openSessions.keys) activeOpenSessions[pkg] = endTimeMs
         }
-
-        val now = System.currentTimeMillis()
-        // Commit exact milliseconds. durationMinutes remains a derived compatibility value for
-        // the current UI while durationMillis is authoritative for future cross-device totals.
-        for ((key, durationMs) in durationMap) {
-            val (pkg, usageDate) = key
-            if (durationMs > 0L) {
-                dailyUsageDao.addUsageMillis(pkg, usageDate, durationMs, now)
-            }
-        }
-        if (intervals.isNotEmpty()) {
-            usageIntervalDao.insertAll(intervals)
-        }
-
-        // Advance last_synced_at
-        appConfigDao.set(AppConfig("last_synced_at", endTimeMs.toString()))
     }
 
     private fun addIntervalToDurationMap(
@@ -1066,10 +1070,11 @@ class UsageRepository(
             if (schemaVersion !in 1..2) {
                 error("Unsupported SyncOn backup schema: $schemaVersion")
             }
-            var restoredApps = 0
-            var restoredUsages = 0
-            var restoredLimits = 0
-            var restoredIntervals = 0
+            val restoreBackup: suspend () -> String = {
+                var restoredApps = 0
+                var restoredUsages = 0
+                var restoredLimits = 0
+                var restoredIntervals = 0
 
             // 1. App Infos
             val appsArray = root.optJSONArray("app_info")
@@ -1201,7 +1206,15 @@ class UsageRepository(
                 }
             }
 
-            Result.success("Restored $restoredApps apps, $restoredUsages usage records, $restoredIntervals precise intervals, and $restoredLimits app limits.")
+                "Restored $restoredApps apps, $restoredUsages usage records, $restoredIntervals precise intervals, and $restoredLimits app limits."
+            }
+
+            val message = if (database != null) {
+                database.withTransaction { restoreBackup() }
+            } else {
+                restoreBackup()
+            }
+            Result.success(message)
         } catch (e: Exception) {
             Result.failure(e)
         }
