@@ -20,5 +20,11 @@ data class AppLimitSettings(
     val dailyLimitMinutes: Int?,
     val blockingStyle: String,
     val snoozeMinutes: Int = 5,
-    val isEnabled: Boolean = true
+    val isEnabled: Boolean = true,
+    val recordId: String = "android-app-limit:$packageName",
+    val updatedAtUtc: Long = System.currentTimeMillis(),
+    val localRevision: Long = 0L,
+    val serverRevision: Long? = null,
+    val syncState: String = "LOCAL_ONLY",
+    val isDeleted: Boolean = false
 )

@@ -31,7 +31,7 @@ import com.yu.syncon.data.local.entity.UsageInterval
         AppConfig::class,
         UsageInterval::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -88,6 +88,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE app_limit_settings ADD COLUMN recordId TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE app_limit_settings ADD COLUMN updatedAtUtc INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE app_limit_settings ADD COLUMN localRevision INTEGER NOT NULL DEFAULT 1")
+                db.execSQL("ALTER TABLE app_limit_settings ADD COLUMN serverRevision INTEGER")
+                db.execSQL("ALTER TABLE app_limit_settings ADD COLUMN syncState TEXT NOT NULL DEFAULT 'LOCAL_ONLY'")
+                db.execSQL("ALTER TABLE app_limit_settings ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("UPDATE app_limit_settings SET recordId = 'android-app-limit-' || packageName WHERE recordId = ''")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -97,6 +109,7 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 .addMigrations(MIGRATION_1_2)
                 .addMigrations(MIGRATION_2_3)
+                .addMigrations(MIGRATION_3_4)
                 // Safety policy: if sideloading an older build, avoid crash on schema downgrade
                 .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                 // For future schema version upgrades (e.g. 1 -> 2), add .addMigrations(MIGRATION_1_2) here

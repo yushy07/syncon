@@ -481,14 +481,25 @@ class FakeAppLimitSettingsDao : AppLimitSettingsDao {
         this.settings[settings.packageName] = settings
     }
 
-    override suspend fun getSettings(packageName: String): AppLimitSettings? = settings[packageName]
-    override fun getSettingsFlow(packageName: String): Flow<AppLimitSettings?> = flowOf(settings[packageName])
+    override suspend fun getSettings(packageName: String): AppLimitSettings? = settings[packageName]?.takeUnless { it.isDeleted }
+    override fun getSettingsFlow(packageName: String): Flow<AppLimitSettings?> = flowOf(settings[packageName]?.takeUnless { it.isDeleted })
     override fun getAllActiveSettingsFlow(): Flow<List<AppLimitSettings>> =
-        flowOf(settings.values.filter { it.isEnabled })
+        flowOf(settings.values.filter { it.isEnabled && !it.isDeleted })
     override suspend fun getAllActiveSettingsStatic(): List<AppLimitSettings> =
-        settings.values.filter { it.isEnabled }
+        settings.values.filter { it.isEnabled && !it.isDeleted }
     override suspend fun getAllStatic(): List<AppLimitSettings> = settings.values.toList()
     override suspend fun delete(packageName: String) { settings.remove(packageName) }
+    override suspend fun markDeleted(packageName: String, updatedAtUtc: Long) {
+        settings[packageName]?.let {
+            settings[packageName] = it.copy(
+                isDeleted = true,
+                isEnabled = false,
+                syncState = "LOCAL_ONLY",
+                localRevision = it.localRevision + 1,
+                updatedAtUtc = updatedAtUtc
+            )
+        }
+    }
 }
 
 class FakeAppDailyStateDao : AppDailyStateDao {

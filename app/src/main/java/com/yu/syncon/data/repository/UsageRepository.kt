@@ -582,11 +582,18 @@ class UsageRepository(
     }
 
     suspend fun saveLimitSettings(settings: AppLimitSettings) = withContext(Dispatchers.IO) {
-        appLimitSettingsDao.upsert(settings)
+        appLimitSettingsDao.upsert(
+            settings.copy(
+                updatedAtUtc = currentTimeMillis(),
+                localRevision = settings.localRevision + 1,
+                syncState = "LOCAL_ONLY",
+                isDeleted = false
+            )
+        )
     }
 
     suspend fun deleteLimitSettings(packageName: String) = withContext(Dispatchers.IO) {
-        appLimitSettingsDao.delete(packageName)
+        appLimitSettingsDao.markDeleted(packageName, currentTimeMillis())
     }
 
     // ---------------------------------------------------------
@@ -918,6 +925,12 @@ class UsageRepository(
             obj.put("blockingStyle", setting.blockingStyle)
             obj.put("snoozeMinutes", setting.snoozeMinutes)
             obj.put("isEnabled", setting.isEnabled)
+            obj.put("recordId", setting.recordId)
+            obj.put("updatedAtUtc", setting.updatedAtUtc)
+            obj.put("localRevision", setting.localRevision)
+            obj.put("serverRevision", setting.serverRevision)
+            obj.put("syncState", setting.syncState)
+            obj.put("isDeleted", setting.isDeleted)
             limitsArray.put(obj)
         }
         root.put("app_limit_settings", limitsArray)
@@ -1007,7 +1020,13 @@ class UsageRepository(
         val dailyLimitMinutes: Int,
         val blockingStyle: String = "STRICT",
         val snoozeMinutes: Int = 5,
-        val isEnabled: Boolean = true
+        val isEnabled: Boolean = true,
+        val recordId: String = "android-category-limit:$category",
+        val updatedAtUtc: Long = 0L,
+        val localRevision: Long = 0L,
+        val serverRevision: Long? = null,
+        val syncState: String = "LOCAL_ONLY",
+        val isDeleted: Boolean = false
     )
 
     suspend fun getCategoryLimit(category: String): CategoryLimitSetting? = withContext(Dispatchers.IO) {
@@ -1019,26 +1038,71 @@ class UsageRepository(
                 dailyLimitMinutes = obj.getInt("dailyLimitMinutes"),
                 blockingStyle = obj.optString("blockingStyle", "STRICT"),
                 snoozeMinutes = obj.optInt("snoozeMinutes", 5),
-                isEnabled = obj.optBoolean("isEnabled", true)
-            )
+                isEnabled = obj.optBoolean("isEnabled", true),
+                recordId = obj.optString("recordId", "android-category-limit:$category"),
+                updatedAtUtc = obj.optLong("updatedAtUtc", 0L),
+                localRevision = obj.optLong("localRevision", 0L),
+                serverRevision = if (obj.has("serverRevision") && !obj.isNull("serverRevision")) obj.getLong("serverRevision") else null,
+                syncState = obj.optString("syncState", "LOCAL_ONLY"),
+                isDeleted = obj.optBoolean("isDeleted", false)
+            ).takeUnless { it.isDeleted }
         } catch (_: Exception) {
             null
         }
     }
 
     suspend fun saveCategoryLimit(setting: CategoryLimitSetting) = withContext(Dispatchers.IO) {
+        val existing = getCategoryLimit(setting.category)
+        val normalized = setting.copy(
+            recordId = existing?.recordId ?: setting.recordId,
+            updatedAtUtc = currentTimeMillis(),
+            localRevision = (existing?.localRevision ?: setting.localRevision) + 1,
+            syncState = "LOCAL_ONLY",
+            isDeleted = false
+        )
         val obj = JSONObject().apply {
-            put("category", setting.category)
-            put("dailyLimitMinutes", setting.dailyLimitMinutes)
-            put("blockingStyle", setting.blockingStyle)
-            put("snoozeMinutes", setting.snoozeMinutes)
-            put("isEnabled", setting.isEnabled)
+            put("category", normalized.category)
+            put("dailyLimitMinutes", normalized.dailyLimitMinutes)
+            put("blockingStyle", normalized.blockingStyle)
+            put("snoozeMinutes", normalized.snoozeMinutes)
+            put("isEnabled", normalized.isEnabled)
+            put("recordId", normalized.recordId)
+            put("updatedAtUtc", normalized.updatedAtUtc)
+            put("localRevision", normalized.localRevision)
+            put("serverRevision", normalized.serverRevision)
+            put("syncState", normalized.syncState)
+            put("isDeleted", normalized.isDeleted)
         }
-        appConfigDao.set(AppConfig("cat_limit_${setting.category}", obj.toString()))
+        appConfigDao.set(AppConfig("cat_limit_${normalized.category}", obj.toString()))
     }
 
     suspend fun deleteCategoryLimit(category: String) = withContext(Dispatchers.IO) {
-        appConfigDao.delete("cat_limit_$category")
+        val existing = getCategoryLimit(category) ?: return@withContext
+        val tombstone = existing.copy(
+            isEnabled = false,
+            isDeleted = true,
+            updatedAtUtc = currentTimeMillis(),
+            localRevision = existing.localRevision + 1,
+            syncState = "LOCAL_ONLY"
+        )
+        appConfigDao.set(
+            AppConfig(
+                "cat_limit_$category",
+                JSONObject().apply {
+                    put("category", tombstone.category)
+                    put("dailyLimitMinutes", tombstone.dailyLimitMinutes)
+                    put("blockingStyle", tombstone.blockingStyle)
+                    put("snoozeMinutes", tombstone.snoozeMinutes)
+                    put("isEnabled", tombstone.isEnabled)
+                    put("recordId", tombstone.recordId)
+                    put("updatedAtUtc", tombstone.updatedAtUtc)
+                    put("localRevision", tombstone.localRevision)
+                    put("serverRevision", tombstone.serverRevision)
+                    put("syncState", tombstone.syncState)
+                    put("isDeleted", tombstone.isDeleted)
+                }.toString()
+            )
+        )
     }
 
     suspend fun getAllCategoryLimits(): List<CategoryLimitSetting> = withContext(Dispatchers.IO) {
@@ -1156,7 +1220,13 @@ class UsageRepository(
                             dailyLimitMinutes = obj.getInt("dailyLimitMinutes"),
                             blockingStyle = obj.optString("blockingStyle", "STRICT"),
                             snoozeMinutes = obj.optInt("snoozeMinutes", 5),
-                            isEnabled = obj.optBoolean("isEnabled", true)
+                            isEnabled = obj.optBoolean("isEnabled", true),
+                            recordId = obj.optString("recordId", "android-app-limit:${obj.getString("packageName")}"),
+                            updatedAtUtc = obj.optLong("updatedAtUtc", currentTimeMillis()),
+                            localRevision = obj.optLong("localRevision", 1L),
+                            serverRevision = if (obj.has("serverRevision") && !obj.isNull("serverRevision")) obj.getLong("serverRevision") else null,
+                            syncState = "LOCAL_ONLY",
+                            isDeleted = obj.optBoolean("isDeleted", false)
                         )
                     )
                 }
