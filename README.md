@@ -299,7 +299,7 @@ The local-first Chrome companion lives in [`extension/`](extension/). It is self
 
 The extension tracks focused domain-level activity, excludes idle and unfocused time, supports strict and soft website limits, and stores precise backend-ready intervals locally. It does not collect full URLs, page contents, form data, or search terms.
 
-The Android and Chrome clients share the activity model documented in [`shared/data-contract-v1.md`](shared/data-contract-v1.md). Neither client is connected to a backend yet.
+The Android and Chrome clients share the activity model documented in [`shared/data-contract-v1.md`](shared/data-contract-v1.md). The versioned Supabase schema and synchronization RPCs live in [`supabase/`](supabase/); client account and transport wiring is the next integration phase.
 
 ---
 

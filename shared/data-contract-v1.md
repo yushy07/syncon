@@ -1,6 +1,6 @@
 # SyncOn Shared Activity Contract v1
 
-This contract is implemented locally by the Android app and Chrome extension. It does not imply that a backend is currently connected.
+This contract is implemented locally by the Android app and Chrome extension. Its Supabase representation and synchronization RPCs are versioned under `supabase/`.
 
 ## Activity interval
 
@@ -37,6 +37,8 @@ This contract is implemented locally by the Android app and Chrome extension. It
 - The newest valid settings revision wins; usage intervals must not use last-write-wins replacement.
 - Logical service mappings are maintained separately in `service-mappings-v1.json`; raw source identities are never overwritten.
 - Cross-platform totals follow `cross-platform-policy-v1.md` and expose both summed device time and overlap-adjusted active span.
+- Backend JSON uses snake_case field names while the existing clients keep their native camelCase/Kotlin names; sync adapters perform the explicit mapping.
+- Every synchronized row is owned by `auth.uid()` and protected by Row Level Security.
 
 ## Privacy boundary
 
