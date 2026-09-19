@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SyncOn Dashboard</title>
+  <link rel="stylesheet" href="../shared.css">
+  <link rel="stylesheet" href="dashboard.css">
+</head>
+<body>
+  <aside>
+    <div class="brand"><span class="mark">S</span><span>SyncOn</span></div>
+    <nav>
+      <button class="nav active" data-view="overview">Today</button>
+      <button class="nav" data-view="websites">Websites</button>
+      <button class="nav" data-view="trends">Trends</button>
+      <button class="nav" data-view="settings">Settings</button>
+    </nav>
+    <div class="privacy-note"><strong>Local-first</strong><span>No browsing data leaves this browser.</span></div>
+  </aside>
+
+  <main>
+    <header class="row between">
+      <div><div class="eyebrow">Browser wellbeing</div><h1 id="pageTitle">Today</h1></div>
+      <div id="trackingStatus" class="status-chip"><i class="status-dot"></i><span>Tracking active</span></div>
+    </header>
+
+    <section id="overview" class="view active">
+      <div class="metrics-grid">
+        <article class="card metric-card"><span class="muted">Chrome today</span><strong id="todayTotal" class="metric">0m</strong><span class="muted">4 AM – 4 AM</span></article>
+        <article class="card metric-card"><span class="muted">Current focus</span><strong id="currentDomain">None</strong><span id="currentDuration" class="muted">Waiting for activity</span></article>
+        <article class="card metric-card"><span class="muted">Most used</span><strong id="topDomain">—</strong><span id="topDuration" class="muted">No usage yet</span></article>
+      </div>
+      <div class="content-grid">
+        <article class="card panel"><div class="row between"><h2>Today’s websites</h2><button class="text-button" data-go="websites">Manage limits</button></div><div id="todayDomains"></div></article>
+        <article class="card panel"><h2>Category balance</h2><div id="categoryBreakdown"></div></article>
+      </div>
+    </section>
+
+    <section id="websites" class="view">
+      <div class="toolbar row between">
+        <input id="search" type="search" placeholder="Search websites">
+        <select id="categoryFilter"><option value="All">All categories</option></select>
+      </div>
+      <div id="websiteList" class="website-grid"></div>
+    </section>
+
+    <section id="trends" class="view">
+      <div class="row between toolbar"><div class="segmented"><button data-days="7" class="active">7 days</button><button data-days="14">14 days</button><button data-days="30">30 days</button></div></div>
+      <article class="card panel"><h2>Daily Chrome time</h2><div id="trendChart" class="bars"></div></article>
+      <article class="card panel"><h2>Top websites in this period</h2><div id="trendDomains"></div></article>
+    </section>
+
+    <section id="settings" class="view">
+      <div class="settings-grid">
+        <article class="card panel">
+          <h2>Tracking</h2>
+          <label class="setting-row"><span><strong>Track focused Chrome time</strong><small>Idle, unfocused and internal Chrome pages are excluded.</small></span><input id="trackingToggle" type="checkbox"></label>
+          <label class="field"><span>Idle timeout</span><select id="idleTimeout"><option value="60">1 minute</option><option value="120">2 minutes</option><option value="300">5 minutes</option></select></label>
+          <label class="field"><span>Excluded domains</span><textarea id="excludedDomains" rows="5" placeholder="bank.example.com&#10;work.example.com"></textarea><small>One domain per line. Subdomains are included.</small></label>
+          <button id="saveSettings" class="pill">Save tracking settings</button>
+        </article>
+        <article class="card panel">
+          <h2>Your data</h2>
+          <p class="muted">The export is versioned and includes precise intervals, daily summaries, categories and limits.</p>
+          <div class="row wrap"><button id="exportData" class="pill secondary">Export JSON</button><label class="pill secondary file-button">Import JSON<input id="importData" type="file" accept="application/json"></label></div>
+          <div id="dataStats" class="data-stats"></div>
+          <button id="clearData" class="pill danger">Clear Chrome history</button>
+        </article>
+        <article class="card panel">
+          <h2>Backend readiness</h2>
+          <div id="backendInfo" class="info-list"></div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="limitDialog">
+    <form method="dialog" id="limitForm">
+      <div class="row between"><div><div class="eyebrow">Website controls</div><h2 id="limitDomain">domain</h2></div><button class="close" value="cancel" aria-label="Close">×</button></div>
+      <label class="setting-row"><span><strong>Daily limit</strong><small>Uses the SyncOn 4 AM usage day.</small></span><input id="limitEnabled" type="checkbox"></label>
+      <label class="field"><span>Limit in minutes</span><input id="limitMinutes" type="number" min="1" max="1440" value="60"></label>
+      <label class="field"><span>Blocking style</span><select id="limitStyle"><option value="STRICT">Strict</option><option value="SOFT">Soft with snooze</option></select></label>
+      <label class="field"><span>Snooze minutes</span><input id="snoozeMinutes" type="number" min="1" max="60" value="5"></label>
+      <label class="field"><span>Category</span><select id="domainCategory"></select></label>
+      <div class="row end"><button value="cancel" class="pill secondary">Cancel</button><button id="saveLimit" value="default" class="pill">Save</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" role="status"></div>
+  <script src="../lib/core.js"></script>
+  <script src="dashboard.js"></script>
+</body>
+</html>

@@ -5,6 +5,6 @@
   "description": "Local-first Chrome screen-time tracker for SyncOn",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "check": "node --check background.js"
+    "check": "node --check background.js && node --check popup/popup.js && node --check dashboard/dashboard.js && node --check blocked/blocked.js"
   }
 }

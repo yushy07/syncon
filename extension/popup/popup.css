@@ -1,0 +1,9 @@
+body { width: 370px; min-height: 500px; }
+main { padding: 18px; display: grid; gap: 18px; }
+.hero { padding: 22px; display: grid; gap: 10px; background: linear-gradient(145deg, #fff 20%, #f1edff); }
+.section-title { margin-bottom: 9px; }
+.domain-list { overflow: hidden; box-shadow: none; }
+.domain-row { padding: 12px 14px; display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; border-bottom: 1px solid var(--border); }
+.domain-row:last-child { border-bottom: 0; }
+.domain-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+footer button { flex: 1; }

@@ -139,13 +139,13 @@ async function cleanup() {
 chrome.runtime.onInstalled.addListener(async () => {
   await state();
   chrome.idle.setDetectionInterval(60);
-  chrome.alarms.create(ALARM_NAME, { periodInMinutes: 1 });
+  chrome.alarms.create(ALARM_NAME, { periodInMinutes: 0.5 });
   await cleanup();
 });
 
 chrome.runtime.onStartup.addListener(async () => {
   await state();
-  chrome.alarms.create(ALARM_NAME, { periodInMinutes: 1 });
+  chrome.alarms.create(ALARM_NAME, { periodInMinutes: 0.5 });
   focusedWindowId = (await chrome.windows.getLastFocused()).id;
   await refreshCurrentTab();
 });

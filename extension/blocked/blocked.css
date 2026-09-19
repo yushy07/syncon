@@ -1,0 +1,8 @@
+body { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: radial-gradient(circle at 50% 15%, #eee9ff, var(--bg) 55%); }
+main { width: min(470px, 100%); padding: 38px; text-align: center; display: grid; justify-items: center; gap: 15px; }
+.lock { width: 82px; height: 82px; display: grid; place-items: center; border-radius: 25px; background: #fff0ed; font-size: 38px; }
+h1 { margin: 0; font-size: 31px; letter-spacing: -.035em; }
+p { margin: 0; max-width: 360px; }
+.usage { width: 100%; margin: 10px 0; padding: 14px 16px; border-radius: 14px; background: var(--surface-soft); display: flex; justify-content: space-between; }
+.actions { width: 100%; display: grid; gap: 10px; }
+.actions .pill { width: 100%; }

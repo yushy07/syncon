@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SyncOn</title>
+  <link rel="stylesheet" href="../shared.css">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header class="row between">
+      <div class="brand"><span class="mark">S</span><span>SyncOn</span></div>
+      <span id="status" class="row muted"><i class="status-dot"></i><span>Tracking</span></span>
+    </header>
+
+    <section class="hero card">
+      <div class="eyebrow">Chrome today</div>
+      <div id="total" class="metric">0m</div>
+      <div id="current" class="muted">Waiting for an active website</div>
+    </section>
+
+    <section>
+      <div class="row between section-title"><strong>Top websites</strong><span id="dayLabel" class="muted"></span></div>
+      <div id="domains" class="domain-list card"></div>
+    </section>
+
+    <footer class="row">
+      <button id="toggle" class="pill secondary">Pause tracking</button>
+      <button id="dashboard" class="pill">Open dashboard</button>
+    </footer>
+  </main>
+  <script src="../lib/core.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
