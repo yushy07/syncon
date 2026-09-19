@@ -37,7 +37,8 @@ class UsageRepository(
     private val appLimitSettingsDao: AppLimitSettingsDao = database?.appLimitSettingsDao() ?: error("appLimitSettingsDao required"),
     private val appDailyStateDao: AppDailyStateDao = database?.appDailyStateDao() ?: error("appDailyStateDao required"),
     private val blockEventDao: BlockEventDao = database?.blockEventDao() ?: error("blockEventDao required"),
-    private val appConfigDao: AppConfigDao = database?.appConfigDao() ?: error("appConfigDao required")
+    private val appConfigDao: AppConfigDao = database?.appConfigDao() ?: error("appConfigDao required"),
+    private val currentTimeMillis: () -> Long = System::currentTimeMillis
 ) {
 
     private val usageStatsManager: UsageStatsManager? by lazy {
@@ -119,7 +120,7 @@ class UsageRepository(
         private set
 
     fun setCurrentForegroundApp(packageName: String?) {
-        val now = System.currentTimeMillis()
+        val now = currentTimeMillis()
         if (currentForegroundPackage != packageName) {
             currentForegroundPackage = packageName
             currentForegroundSessionStartMs = now
@@ -382,14 +383,16 @@ class UsageRepository(
         val dailyState = appDailyStateDao.getOrCreateState(packageName, today)
         val usage = dailyUsageDao.getUsage(packageName, today)
         var usedMinutes = usage?.durationMinutes?.toInt() ?: 0
+        var liveSessionMinutes = 0
 
         // Include current in-progress foreground session minutes if checking the active app
         if (packageName == currentForegroundPackage && currentForegroundSessionStartMs > 0L) {
             val lastUpdatedAt = usage?.lastUpdatedAt ?: 0L
             val elapsedBaselineMs = maxOf(currentForegroundSessionStartMs, lastUpdatedAt)
-            val liveMs = System.currentTimeMillis() - elapsedBaselineMs
+            val liveMs = currentTimeMillis() - elapsedBaselineMs
             if (liveMs > 0) {
-                usedMinutes += (liveMs / 60000L).toInt()
+                liveSessionMinutes = (liveMs / 60000L).toInt()
+                usedMinutes += liveSessionMinutes
             }
         }
 
@@ -418,7 +421,10 @@ class UsageRepository(
         // 2. Evaluate category budget if set
         if (hasCatLimit) {
             val cat = catLimit
-            val catUsedMinutes = getTodayCategoryUsageMinutes(category).toInt()
+            // The database total can be up to one tracking interval behind. Include only the
+            // active app's uncommitted portion so category enforcement is as timely as app limits
+            // without counting any duration already persisted by the tracking service.
+            val catUsedMinutes = getTodayCategoryUsageMinutes(category).toInt() + liveSessionMinutes
             val remaining = cat.dailyLimitMinutes - catUsedMinutes
             val shouldBlock = catUsedMinutes >= cat.dailyLimitMinutes
             val shouldWarn = remaining in 1..5 && !dailyState.warningShown

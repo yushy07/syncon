@@ -38,6 +38,7 @@ class UsageRepositoryTest {
     private lateinit var appConfigDao: FakeAppConfigDao
 
     private lateinit var repository: UsageRepository
+    private var nowMs: Long = 1_000_000L
 
     @Before
     fun setup() {
@@ -57,7 +58,8 @@ class UsageRepositoryTest {
             appLimitSettingsDao = appLimitSettingsDao,
             appDailyStateDao = appDailyStateDao,
             blockEventDao = blockEventDao,
-            appConfigDao = appConfigDao
+            appConfigDao = appConfigDao,
+            currentTimeMillis = { nowMs }
         )
     }
 
@@ -240,6 +242,31 @@ class UsageRepositoryTest {
         repository.deleteCategoryLimit("Social Media")
         val result3 = repository.checkAppLimit("com.instagram.android")
         assertNull(result3)
+    }
+
+    @Test
+    fun `category limit includes the active uncommitted foreground session`() = runTest {
+        val today = UsageDayCalculator.getTodayUsageDate()
+        repository.saveCategoryLimit(
+            UsageRepository.CategoryLimitSetting(
+                category = "Social Media",
+                dailyLimitMinutes = 60,
+                blockingStyle = "STRICT"
+            )
+        )
+        dailyUsageDao.insertOrUpdate(
+            DailyUsage("com.test.app", today, 58, nowMs)
+        )
+
+        repository.setCurrentForegroundApp("com.test.app")
+        nowMs += 2 * 60 * 1000L
+
+        val result = repository.checkAppLimit("com.test.app")
+
+        assertNotNull(result)
+        assertEquals(60, result!!.usedMinutes)
+        assertTrue(result.shouldBlock)
+        assertEquals(0, result.remainingMinutes)
     }
 
     @Test
