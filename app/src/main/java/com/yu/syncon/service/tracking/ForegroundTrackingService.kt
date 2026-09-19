@@ -9,6 +9,7 @@ import android.util.Log
 import com.yu.syncon.SyncOnApp
 import com.yu.syncon.data.repository.UsageRepository
 import com.yu.syncon.util.NotificationHelper
+import com.yu.syncon.util.DiagnosticLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -53,6 +54,7 @@ class ForegroundTrackingService : Service() {
             startForeground(NotificationHelper.TRACKING_NOTIFICATION_ID, notification)
         }
         Log.i(TAG, "ForegroundTrackingService created and started in foreground")
+        DiagnosticLog.record(this, "tracking_service_started")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -80,6 +82,7 @@ class ForegroundTrackingService : Service() {
                         // launches from two independently scheduled loops.
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to process usage events for window ($lastCheckTime, $now)", e)
+                        DiagnosticLog.record(applicationContext, "usage_tick_failed", e.message)
                     }
                     delay(5 * 60 * 1000L) // 5 minutes
                 }

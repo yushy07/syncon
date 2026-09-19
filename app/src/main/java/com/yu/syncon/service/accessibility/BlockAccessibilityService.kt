@@ -12,6 +12,7 @@ import com.yu.syncon.SyncOnApp
 import com.yu.syncon.data.repository.UsageRepository
 import com.yu.syncon.ui.blocked.BlockedActivity
 import com.yu.syncon.util.NotificationHelper
+import com.yu.syncon.util.DiagnosticLog
 import com.yu.syncon.util.UsageDayCalculator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -166,6 +167,7 @@ class BlockAccessibilityService : AccessibilityService() {
         if (limitCheck.shouldBlock && !dailyState.isBlocked) {
             Log.w(TAG, "Enforcing block for $targetPackage (Used: ${limitCheck.usedMinutes}, Limit: ${limitCheck.limitMinutes}, Style: ${limitCheck.blockingStyle})")
             repository.markAppBlocked(targetPackage)
+            DiagnosticLog.record(applicationContext, "app_blocked", targetPackage)
             NotificationHelper.cancelLiveRemainingNotification(applicationContext)
             launchBlockedActivity(
                 packageName = targetPackage,

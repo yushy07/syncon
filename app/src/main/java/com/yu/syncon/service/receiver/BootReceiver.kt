@@ -6,6 +6,7 @@ import android.content.Intent
 import androidx.core.content.ContextCompat
 import com.yu.syncon.service.tracking.ForegroundTrackingService
 import com.yu.syncon.util.PermissionUtils
+import com.yu.syncon.util.DiagnosticLog
 
 class BootReceiver : BroadcastReceiver() {
 
@@ -16,8 +17,9 @@ class BootReceiver : BroadcastReceiver() {
                 val serviceIntent = Intent(context, ForegroundTrackingService::class.java)
                 try {
                     ContextCompat.startForegroundService(context, serviceIntent)
-                } catch (_: Exception) {
-                    // Safe guard against background execution limits
+                    DiagnosticLog.record(context, "boot_tracking_start_requested")
+                } catch (e: Exception) {
+                    DiagnosticLog.record(context, "boot_tracking_start_failed", e.message)
                 }
             }
         }

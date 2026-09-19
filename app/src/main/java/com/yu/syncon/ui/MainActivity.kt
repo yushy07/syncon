@@ -42,6 +42,7 @@ import com.yu.syncon.ui.settings.SettingsScreen
 import com.yu.syncon.ui.theme.SyncOnTheme
 import com.yu.syncon.ui.trends.TrendsScreen
 import com.yu.syncon.util.PermissionUtils
+import com.yu.syncon.util.DiagnosticLog
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -108,8 +109,8 @@ class MainActivity : ComponentActivity() {
         try {
             val serviceIntent = Intent(this, ForegroundTrackingService::class.java)
             ContextCompat.startForegroundService(this, serviceIntent)
-        } catch (_: Exception) {
-            // Guard against background startup limitations
+        } catch (e: Exception) {
+            DiagnosticLog.record(this, "tracking_service_start_failed", e.message)
         }
     }
 }

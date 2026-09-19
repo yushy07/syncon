@@ -23,11 +23,10 @@ import com.yu.syncon.data.local.entity.BlockEvent
 import com.yu.syncon.data.local.entity.DailyUsage
 import com.yu.syncon.data.local.entity.UsageInterval
 import com.yu.syncon.util.CategoryMapper
+import com.yu.syncon.util.DiagnosticLog
 import com.yu.syncon.util.UsageDayCalculator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -53,7 +52,8 @@ class UsageRepository(
     private val usageStatsManager: UsageStatsManager? by lazy {
         context?.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
     }
-    private val installationIdMutex = Mutex()
+    private val trackingStateRepository = TrackingStateRepository(appConfigDao, currentTimeMillis)
+    private val syncQueueRepository = SyncQueueRepository(usageIntervalDao)
 
     // ---------------------------------------------------------
     // Installed Apps Sync
@@ -202,9 +202,9 @@ class UsageRepository(
                     dailyUsageDao.addUsageMillis(pkg, usageDate, durationMs, now)
                 }
             }
-            if (intervals.isNotEmpty()) usageIntervalDao.insertAll(intervals)
+            if (intervals.isNotEmpty()) syncQueueRepository.add(intervals)
             // The cursor is part of the same transaction. A crash cannot advance it without data.
-            appConfigDao.set(AppConfig("last_synced_at", endTimeMs.toString()))
+            trackingStateRepository.markCollection(endTimeMs)
         }
 
         if (database != null) {
@@ -337,8 +337,7 @@ class UsageRepository(
         val today = UsageDayCalculator.getTodayUsageDate()
         val (todayStartMs, _) = UsageDayCalculator.getUsageDayRange(today)
 
-        val lastSyncedStr = appConfigDao.get("last_synced_at")
-        val lastSynced = lastSyncedStr?.toLongOrNull()
+        val lastSynced = trackingStateRepository.lastSyncedAt()
 
         // First run or past day: start from 4 AM today
         val syncStart = if (lastSynced == null || lastSynced < todayStartMs) {
@@ -353,19 +352,11 @@ class UsageRepository(
 
         // Backfill 30 days if needed
         backfillHistoricalDataIfEmpty()
-        appConfigDao.set(AppConfig("last_reconciled_at", now.toString()))
+        trackingStateRepository.markReconciliation(now)
     }
 
-    data class TrackingHealthSnapshot(
-        val lastCollectionAt: Long?,
-        val lastReconciliationAt: Long?
-    )
-
-    suspend fun getTrackingHealthSnapshot(): TrackingHealthSnapshot = withContext(Dispatchers.IO) {
-        TrackingHealthSnapshot(
-            lastCollectionAt = appConfigDao.get("last_synced_at")?.toLongOrNull(),
-            lastReconciliationAt = appConfigDao.get("last_reconciled_at")?.toLongOrNull()
-        )
+    suspend fun getTrackingHealthSnapshot(): TrackingStateRepository.HealthSnapshot = withContext(Dispatchers.IO) {
+        trackingStateRepository.health()
     }
 
     /**
@@ -612,7 +603,7 @@ class UsageRepository(
 
         dailyUsageDao.deleteOlderThan(cutoffDate)
         blockEventDao.deleteOlderThan(cutoffDate)
-        usageIntervalDao.deleteOlderThan(cutoffDate)
+        syncQueueRepository.prune(cutoffDate)
     }
 
     // ---------------------------------------------------------
@@ -832,12 +823,7 @@ class UsageRepository(
      * derived from Android hardware identifiers. A restored backup records its source identity,
      * but never replaces the receiving installation's identity.
      */
-    suspend fun getOrCreateInstallationId(): String = installationIdMutex.withLock {
-        appConfigDao.get("installation_id")?.let { return@withLock it }
-        val newId = UUID.randomUUID().toString()
-        appConfigDao.set(AppConfig("installation_id", newId))
-        newId
-    }
+    suspend fun getOrCreateInstallationId(): String = trackingStateRepository.installationId()
 
     suspend fun getOrCreateDailyState(packageName: String, usageDate: String): AppDailyState = withContext(Dispatchers.IO) {
         appDailyStateDao.getOrCreateState(packageName, usageDate)
@@ -881,7 +867,7 @@ class UsageRepository(
         val dailyUsages = dailyUsageDao.getAllStatic()
         val limitSettings = appLimitSettingsDao.getAllStatic()
         val blockEvents = blockEventDao.getAllStatic()
-        val usageIntervals = usageIntervalDao.getAllStatic()
+        val usageIntervals = syncQueueRepository.all()
         val categoryLimits = getAllCategoryLimits()
 
         val root = JSONObject()
@@ -982,6 +968,7 @@ class UsageRepository(
             })
         }
         root.put("category_limits", categoryLimitsArray)
+        root.put("diagnostic_log", context?.let { DiagnosticLog.export(it) } ?: JSONArray())
 
         root.toString(2)
     }
@@ -1258,7 +1245,7 @@ class UsageRepository(
                         isDeleted = obj.optBoolean("isDeleted", false)
                     )
                 }
-                restoredIntervals = usageIntervalDao.insertAll(intervals).count { it != -1L }
+                restoredIntervals = syncQueueRepository.add(intervals)
             }
 
             // 6. Audit events, deduplicated by their immutable event fields.

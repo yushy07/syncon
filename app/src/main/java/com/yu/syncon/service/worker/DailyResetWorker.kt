@@ -9,6 +9,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.yu.syncon.SyncOnApp
 import com.yu.syncon.data.repository.UsageRepository
+import com.yu.syncon.util.DiagnosticLog
 import java.time.Duration
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -25,9 +26,11 @@ class DailyResetWorker(
             val repository = (applicationContext as? SyncOnApp)?.repository ?: UsageRepository(applicationContext)
             repository.performDailyReset()
             Log.i(TAG, "Daily reset completed successfully")
+            DiagnosticLog.record(applicationContext, "daily_maintenance_completed")
             Result.success()
         } catch (e: Exception) {
             Log.e(TAG, "Daily reset failed; requesting retry", e)
+            DiagnosticLog.record(applicationContext, "daily_maintenance_failed", e.message)
             Result.retry()
         }
     }

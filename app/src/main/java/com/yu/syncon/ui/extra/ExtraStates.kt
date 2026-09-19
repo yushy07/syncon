@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yu.syncon.data.repository.UsageRepository
+import com.yu.syncon.data.repository.TrackingStateRepository
 import com.yu.syncon.ui.components.OutlinedPillButton
 import com.yu.syncon.ui.components.PrimaryPillButton
 import com.yu.syncon.ui.theme.AccentCoral
@@ -280,7 +281,7 @@ fun TrackingStatusScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var health by remember { mutableStateOf<UsageRepository.TrackingHealthSnapshot?>(null) }
+    var health by remember { mutableStateOf<TrackingStateRepository.HealthSnapshot?>(null) }
 
     LaunchedEffect(Unit) {
         health = repository.getTrackingHealthSnapshot()
