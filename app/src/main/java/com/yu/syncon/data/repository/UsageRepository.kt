@@ -23,11 +23,14 @@ import com.yu.syncon.util.CategoryMapper
 import com.yu.syncon.util.UsageDayCalculator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.util.UUID
 
 class UsageRepository(
     private val context: Context? = null,
@@ -44,6 +47,7 @@ class UsageRepository(
     private val usageStatsManager: UsageStatsManager? by lazy {
         context?.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
     }
+    private val installationIdMutex = Mutex()
 
     // ---------------------------------------------------------
     // Installed Apps Sync
@@ -736,11 +740,24 @@ class UsageRepository(
     // ---------------------------------------------------------
 
     suspend fun initFirstLaunchDateIfNeeded() = withContext(Dispatchers.IO) {
+        getOrCreateInstallationId()
         val existing = appConfigDao.get("first_launch_date")
         if (existing == null) {
             val today = UsageDayCalculator.getTodayUsageDate()
             appConfigDao.set(AppConfig("first_launch_date", today))
         }
+    }
+
+    /**
+     * Privacy-safe identity for this app installation. It is deliberately random and is not
+     * derived from Android hardware identifiers. A restored backup records its source identity,
+     * but never replaces the receiving installation's identity.
+     */
+    suspend fun getOrCreateInstallationId(): String = installationIdMutex.withLock {
+        appConfigDao.get("installation_id")?.let { return@withLock it }
+        val newId = UUID.randomUUID().toString()
+        appConfigDao.set(AppConfig("installation_id", newId))
+        newId
     }
 
     suspend fun getOrCreateDailyState(packageName: String, usageDate: String): AppDailyState = withContext(Dispatchers.IO) {
@@ -790,6 +807,9 @@ class UsageRepository(
         root.put("exported_at", System.currentTimeMillis())
         root.put("export_date", UsageDayCalculator.getTodayUsageDate())
         root.put("version", "1.0.0")
+        root.put("schema_version", 1)
+        root.put("source_platform", "ANDROID")
+        root.put("source_installation_id", getOrCreateInstallationId())
 
         val appsArray = JSONArray()
         for (app in appInfos) {

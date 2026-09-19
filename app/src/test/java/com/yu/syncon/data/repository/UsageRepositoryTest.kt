@@ -18,6 +18,7 @@ import com.yu.syncon.util.UsageDayCalculator
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -282,6 +283,19 @@ class UsageRepositoryTest {
         assertEquals(2 * 60 * 1000L, result["2026-09-17"])
         assertEquals(3 * 60 * 1000L, result["2026-09-18"])
         assertEquals(5 * 60 * 1000L, result.values.sum())
+    }
+
+    @Test
+    fun `installation identity is random stable and included in exports`() = runTest {
+        val first = repository.getOrCreateInstallationId()
+        val second = repository.getOrCreateInstallationId()
+
+        assertTrue(first.isNotBlank())
+        assertEquals(first, second)
+
+        val export = JSONObject(repository.exportAllDataAsJson())
+        assertEquals("ANDROID", export.getString("source_platform"))
+        assertEquals(first, export.getString("source_installation_id"))
     }
 
     @Test
