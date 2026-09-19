@@ -28,14 +28,21 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.yu.syncon.data.repository.UsageRepository
 import com.yu.syncon.ui.components.OutlinedPillButton
 import com.yu.syncon.ui.components.PrimaryPillButton
 import com.yu.syncon.ui.theme.AccentCoral
@@ -51,6 +58,7 @@ import com.yu.syncon.ui.theme.PrimaryIndigoLight
 import com.yu.syncon.ui.theme.TextPrimary
 import com.yu.syncon.ui.theme.TextSecondary
 import com.yu.syncon.ui.theme.getCategoryColor
+import com.yu.syncon.util.PermissionUtils
 
 // -------------------------------------------------------------
 // Screen 39: App Uninstalled State
@@ -267,7 +275,23 @@ fun TrackingActiveCard(
 // Screen 41: Dedicated Tracking Active Detail Screen
 // -------------------------------------------------------------
 @Composable
-fun TrackingStatusScreen(onBack: () -> Unit) {
+fun TrackingStatusScreen(
+    repository: UsageRepository,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    var health by remember { mutableStateOf<UsageRepository.TrackingHealthSnapshot?>(null) }
+
+    LaunchedEffect(Unit) {
+        health = repository.getTrackingHealthSnapshot()
+    }
+
+    val hasUsageAccess = PermissionUtils.hasUsageAccess(context)
+    val hasAccessibility = PermissionUtils.isAccessibilityServiceEnabled(context)
+    val ignoresBatteryOptimization = PermissionUtils.isIgnoringBatteryOptimizations(context)
+    val lastCollectionAt = health?.lastCollectionAt
+    val collectionAgeMs = lastCollectionAt?.let { System.currentTimeMillis() - it }
+    val collectionIsFresh = hasUsageAccess && collectionAgeMs != null && collectionAgeMs in 0..(10 * 60 * 1000L)
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -356,14 +380,26 @@ fun TrackingStatusScreen(onBack: () -> Unit) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         TrackingHealthRow(
                             label = "Usage Tracking Service",
-                            status = "Running (5m ticks)",
-                            isHealthy = true
+                            status = formatTrackingTime("Last collection", lastCollectionAt),
+                            isHealthy = collectionIsFresh
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         TrackingHealthRow(
                             label = "Accessibility Service",
-                            status = "Active (instant block)",
-                            isHealthy = true
+                            status = if (hasAccessibility) "Enabled for live blocking" else "Permission required",
+                            isHealthy = hasAccessibility
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        TrackingHealthRow(
+                            label = "Gap Reconciliation",
+                            status = formatTrackingTime("Last completed", health?.lastReconciliationAt),
+                            isHealthy = health?.lastReconciliationAt != null
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        TrackingHealthRow(
+                            label = "Battery Protection",
+                            status = if (ignoresBatteryOptimization) "Unrestricted" else "Optimization may interrupt tracking",
+                            isHealthy = ignoresBatteryOptimization
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         TrackingHealthRow(
@@ -392,6 +428,17 @@ fun TrackingStatusScreen(onBack: () -> Unit) {
                 )
             }
         }
+    }
+}
+
+private fun formatTrackingTime(prefix: String, timestamp: Long?): String {
+    if (timestamp == null) return "$prefix: never"
+    val ageMinutes = ((System.currentTimeMillis() - timestamp).coerceAtLeast(0L) / 60_000L)
+    return when {
+        ageMinutes == 0L -> "$prefix: just now"
+        ageMinutes == 1L -> "$prefix: 1 minute ago"
+        ageMinutes < 60L -> "$prefix: $ageMinutes minutes ago"
+        else -> "$prefix: ${ageMinutes / 60L} hours ago"
     }
 }
 

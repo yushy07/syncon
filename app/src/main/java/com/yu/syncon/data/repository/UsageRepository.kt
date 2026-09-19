@@ -313,6 +313,19 @@ class UsageRepository(
 
         // Backfill 30 days if needed
         backfillHistoricalDataIfEmpty()
+        appConfigDao.set(AppConfig("last_reconciled_at", now.toString()))
+    }
+
+    data class TrackingHealthSnapshot(
+        val lastCollectionAt: Long?,
+        val lastReconciliationAt: Long?
+    )
+
+    suspend fun getTrackingHealthSnapshot(): TrackingHealthSnapshot = withContext(Dispatchers.IO) {
+        TrackingHealthSnapshot(
+            lastCollectionAt = appConfigDao.get("last_synced_at")?.toLongOrNull(),
+            lastReconciliationAt = appConfigDao.get("last_reconciled_at")?.toLongOrNull()
+        )
     }
 
     /**

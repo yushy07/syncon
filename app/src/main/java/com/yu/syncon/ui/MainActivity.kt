@@ -266,6 +266,7 @@ fun MainAppContent(
             }
             composable(Screen.TrackingStatus.route) {
                 com.yu.syncon.ui.extra.TrackingStatusScreen(
+                    repository = repository,
                     onBack = { navController.popBackStack() }
                 )
             }
