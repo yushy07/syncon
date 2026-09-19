@@ -169,10 +169,7 @@ class UsageRepository(
             } else if (isPause) {
                 val resumeTime = openSessions.remove(pkg)
                 if (resumeTime != null && eventTime > resumeTime) {
-                    val durationMs = eventTime - resumeTime
-                    val usageDate = UsageDayCalculator.getUsageDate(resumeTime)
-                    val key = Pair(pkg, usageDate)
-                    durationMap[key] = (durationMap[key] ?: 0L) + durationMs
+                    addIntervalToDurationMap(durationMap, pkg, resumeTime, eventTime)
                 }
             }
         }
@@ -180,10 +177,7 @@ class UsageRepository(
         // For any app still in the foreground at endTimeMs
         for ((pkg, resumeTime) in openSessions) {
             if (endTimeMs > resumeTime) {
-                val durationMs = endTimeMs - resumeTime
-                val usageDate = UsageDayCalculator.getUsageDate(resumeTime)
-                val key = Pair(pkg, usageDate)
-                durationMap[key] = (durationMap[key] ?: 0L) + durationMs
+                addIntervalToDurationMap(durationMap, pkg, resumeTime, endTimeMs)
             }
         }
 
@@ -211,6 +205,40 @@ class UsageRepository(
 
         // Advance last_synced_at
         appConfigDao.set(AppConfig("last_synced_at", endTimeMs.toString()))
+    }
+
+    private fun addIntervalToDurationMap(
+        durationMap: MutableMap<Pair<String, String>, Long>,
+        packageName: String,
+        startTimeMs: Long,
+        endTimeMs: Long
+    ) {
+        for ((usageDate, durationMs) in splitDurationByUsageDate(startTimeMs, endTimeMs)) {
+            val key = Pair(packageName, usageDate)
+            durationMap[key] = (durationMap[key] ?: 0L) + durationMs
+        }
+    }
+
+    /**
+     * Splits a foreground interval at each 4:00 AM usage-day boundary. Polling usually
+     * limits the error to a few minutes, but storing the interval correctly here keeps
+     * daily limits, trends, and future cross-device summaries deterministic.
+     */
+    internal fun splitDurationByUsageDate(startTimeMs: Long, endTimeMs: Long): Map<String, Long> {
+        if (startTimeMs >= endTimeMs) return emptyMap()
+
+        val result = linkedMapOf<String, Long>()
+        var cursor = startTimeMs
+        while (cursor < endTimeMs) {
+            val usageDate = UsageDayCalculator.getUsageDate(cursor)
+            val (_, usageDayEndMs) = UsageDayCalculator.getUsageDayRange(usageDate)
+            val segmentEnd = minOf(endTimeMs, usageDayEndMs)
+            if (segmentEnd <= cursor) break
+
+            result[usageDate] = (result[usageDate] ?: 0L) + (segmentEnd - cursor)
+            cursor = segmentEnd
+        }
+        return result
     }
 
     /**

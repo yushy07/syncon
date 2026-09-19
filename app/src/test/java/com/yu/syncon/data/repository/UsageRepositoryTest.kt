@@ -26,6 +26,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 class UsageRepositoryTest {
@@ -267,6 +268,20 @@ class UsageRepositoryTest {
         assertEquals(60, result!!.usedMinutes)
         assertTrue(result.shouldBlock)
         assertEquals(0, result.remainingMinutes)
+    }
+
+    @Test
+    fun `foreground interval crossing 4 AM is split across usage days`() {
+        val zone = ZoneId.systemDefault()
+        val boundaryDate = LocalDate.of(2026, 9, 18)
+        val start = boundaryDate.atTime(3, 58).atZone(zone).toInstant().toEpochMilli()
+        val end = boundaryDate.atTime(4, 3).atZone(zone).toInstant().toEpochMilli()
+
+        val result = repository.splitDurationByUsageDate(start, end)
+
+        assertEquals(2 * 60 * 1000L, result["2026-09-17"])
+        assertEquals(3 * 60 * 1000L, result["2026-09-18"])
+        assertEquals(5 * 60 * 1000L, result.values.sum())
     }
 
     @Test
