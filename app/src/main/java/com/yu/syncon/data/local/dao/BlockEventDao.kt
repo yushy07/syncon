@@ -25,6 +25,9 @@ interface BlockEventDao {
     @Query("SELECT * FROM block_event_log ORDER BY timestamp DESC")
     suspend fun getAllStatic(): List<BlockEvent>
 
+    @Query("SELECT COUNT(*) FROM block_event_log WHERE packageName = :packageName AND usageDate = :usageDate AND eventType = :eventType AND timestamp = :timestamp")
+    suspend fun countMatching(packageName: String, usageDate: String, eventType: String, timestamp: Long): Int
+
     @Query("DELETE FROM block_event_log WHERE usageDate < :cutoffDate")
     suspend fun deleteOlderThan(cutoffDate: String): Int
 }

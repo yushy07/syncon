@@ -560,6 +560,9 @@ class FakeBlockEventDao : BlockEventDao {
     }
 
     override suspend fun getAllStatic(): List<BlockEvent> = events.toList()
+
+    override suspend fun countMatching(packageName: String, usageDate: String, eventType: String, timestamp: Long): Int =
+        events.count { it.packageName == packageName && it.usageDate == usageDate && it.eventType == eventType && it.timestamp == timestamp }
 }
 
 class FakeAppConfigDao : AppConfigDao {

@@ -835,12 +835,15 @@ class UsageRepository(
         val dailyUsages = dailyUsageDao.getAllStatic()
         val limitSettings = appLimitSettingsDao.getAllStatic()
         val blockEvents = blockEventDao.getAllStatic()
+        val usageIntervals = usageIntervalDao.getAllStatic()
+        val categoryLimits = getAllCategoryLimits()
 
         val root = JSONObject()
         root.put("exported_at", System.currentTimeMillis())
         root.put("export_date", UsageDayCalculator.getTodayUsageDate())
         root.put("version", "1.0.0")
-        root.put("schema_version", 1)
+        root.put("backup_kind", "SYNCON_ANDROID_BACKUP")
+        root.put("schema_version", 2)
         root.put("source_platform", "ANDROID")
         root.put("source_installation_id", getOrCreateInstallationId())
 
@@ -891,6 +894,42 @@ class UsageRepository(
             eventsArray.put(obj)
         }
         root.put("block_event_log", eventsArray)
+
+        val intervalsArray = JSONArray()
+        for (interval in usageIntervals) {
+            intervalsArray.put(JSONObject().apply {
+                put("recordId", interval.recordId)
+                put("installationId", interval.installationId)
+                put("sourcePlatform", interval.sourcePlatform)
+                put("sourceType", interval.sourceType)
+                put("sourceIdentifier", interval.sourceIdentifier)
+                put("usageDate", interval.usageDate)
+                put("startTimeUtc", interval.startTimeUtc)
+                put("endTimeUtc", interval.endTimeUtc)
+                put("durationMillis", interval.durationMillis)
+                put("timezoneId", interval.timezoneId)
+                put("utcOffsetMinutes", interval.utcOffsetMinutes)
+                put("createdAtUtc", interval.createdAtUtc)
+                put("updatedAtUtc", interval.updatedAtUtc)
+                put("localRevision", interval.localRevision)
+                put("serverRevision", interval.serverRevision)
+                put("syncState", interval.syncState)
+                put("isDeleted", interval.isDeleted)
+            })
+        }
+        root.put("usage_intervals", intervalsArray)
+
+        val categoryLimitsArray = JSONArray()
+        for (setting in categoryLimits) {
+            categoryLimitsArray.put(JSONObject().apply {
+                put("category", setting.category)
+                put("dailyLimitMinutes", setting.dailyLimitMinutes)
+                put("blockingStyle", setting.blockingStyle)
+                put("snoozeMinutes", setting.snoozeMinutes)
+                put("isEnabled", setting.isEnabled)
+            })
+        }
+        root.put("category_limits", categoryLimitsArray)
 
         root.toString(2)
     }
@@ -984,9 +1023,18 @@ class UsageRepository(
     suspend fun importDataFromJson(jsonString: String): Result<String> = withContext(Dispatchers.IO) {
         try {
             val root = JSONObject(jsonString)
+            val backupKind = root.optString("backup_kind", "LEGACY_SYNCON_ANDROID_BACKUP")
+            val schemaVersion = root.optInt("schema_version", 1)
+            if (backupKind != "SYNCON_ANDROID_BACKUP" && backupKind != "LEGACY_SYNCON_ANDROID_BACKUP") {
+                error("This file is not a SyncOn Android backup")
+            }
+            if (schemaVersion !in 1..2) {
+                error("Unsupported SyncOn backup schema: $schemaVersion")
+            }
             var restoredApps = 0
             var restoredUsages = 0
             var restoredLimits = 0
+            var restoredIntervals = 0
 
             // 1. App Infos
             val appsArray = root.optJSONArray("app_info")
@@ -1057,7 +1105,68 @@ class UsageRepository(
                 }
             }
 
-            Result.success("Restored $restoredApps apps, $restoredUsages usage records, and $restoredLimits app limits.")
+            // 4. Category limits
+            val categoryLimitsArray = root.optJSONArray("category_limits")
+            if (categoryLimitsArray != null) {
+                for (i in 0 until categoryLimitsArray.length()) {
+                    val obj = categoryLimitsArray.getJSONObject(i)
+                    saveCategoryLimit(
+                        CategoryLimitSetting(
+                            category = obj.getString("category"),
+                            dailyLimitMinutes = obj.getInt("dailyLimitMinutes"),
+                            blockingStyle = obj.optString("blockingStyle", "STRICT"),
+                            snoozeMinutes = obj.optInt("snoozeMinutes", 5),
+                            isEnabled = obj.optBoolean("isEnabled", true)
+                        )
+                    )
+                }
+            }
+
+            // 5. Precise usage intervals. INSERT IGNORE makes repeat imports idempotent.
+            val intervalsArray = root.optJSONArray("usage_intervals")
+            if (intervalsArray != null) {
+                val intervals = mutableListOf<UsageInterval>()
+                for (i in 0 until intervalsArray.length()) {
+                    val obj = intervalsArray.getJSONObject(i)
+                    intervals += UsageInterval(
+                        recordId = obj.getString("recordId"),
+                        installationId = obj.getString("installationId"),
+                        sourcePlatform = obj.optString("sourcePlatform", "ANDROID"),
+                        sourceType = obj.optString("sourceType", "ANDROID_APP"),
+                        sourceIdentifier = obj.getString("sourceIdentifier"),
+                        usageDate = obj.getString("usageDate"),
+                        startTimeUtc = obj.getLong("startTimeUtc"),
+                        endTimeUtc = obj.getLong("endTimeUtc"),
+                        durationMillis = obj.getLong("durationMillis"),
+                        timezoneId = obj.optString("timezoneId", "UTC"),
+                        utcOffsetMinutes = obj.optInt("utcOffsetMinutes", 0),
+                        createdAtUtc = obj.optLong("createdAtUtc", obj.getLong("startTimeUtc")),
+                        updatedAtUtc = obj.optLong("updatedAtUtc", obj.getLong("endTimeUtc")),
+                        localRevision = obj.optLong("localRevision", 1L),
+                        serverRevision = if (obj.has("serverRevision") && !obj.isNull("serverRevision")) obj.getLong("serverRevision") else null,
+                        syncState = "LOCAL_ONLY",
+                        isDeleted = obj.optBoolean("isDeleted", false)
+                    )
+                }
+                restoredIntervals = usageIntervalDao.insertAll(intervals).count { it != -1L }
+            }
+
+            // 6. Audit events, deduplicated by their immutable event fields.
+            val eventsArray = root.optJSONArray("block_event_log")
+            if (eventsArray != null) {
+                for (i in 0 until eventsArray.length()) {
+                    val obj = eventsArray.getJSONObject(i)
+                    val packageName = obj.getString("packageName")
+                    val usageDate = obj.getString("usageDate")
+                    val eventType = obj.getString("eventType")
+                    val timestamp = obj.getLong("timestamp")
+                    if (blockEventDao.countMatching(packageName, usageDate, eventType, timestamp) == 0) {
+                        blockEventDao.insert(BlockEvent(packageName = packageName, usageDate = usageDate, eventType = eventType, timestamp = timestamp))
+                    }
+                }
+            }
+
+            Result.success("Restored $restoredApps apps, $restoredUsages usage records, $restoredIntervals precise intervals, and $restoredLimits app limits.")
         } catch (e: Exception) {
             Result.failure(e)
         }
