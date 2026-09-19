@@ -441,7 +441,8 @@ class UsageRepository(
         val usedMinutes: Int,
         val blockingStyle: String,
         val snoozeMinutes: Int,
-        val appName: String
+        val appName: String,
+        val categoryLimit: String? = null
     )
 
     suspend fun checkAppLimit(packageName: String): LimitCheckResult? = withContext(Dispatchers.IO) {
@@ -490,7 +491,8 @@ class UsageRepository(
                     usedMinutes = usedMinutes,
                     blockingStyle = settings.blockingStyle,
                     snoozeMinutes = settings.snoozeMinutes,
-                    appName = appName
+                    appName = appName,
+                    categoryLimit = null
                 )
             }
         }
@@ -498,23 +500,26 @@ class UsageRepository(
         // 2. Evaluate category budget if set
         if (hasCatLimit) {
             val cat = catLimit
+            val categorySnoozeMinutes = getCategorySnoozeMinutes(category, today)
             // The database total can be up to one tracking interval behind. Include only the
             // active app's uncommitted portion so category enforcement is as timely as app limits
             // without counting any duration already persisted by the tracking service.
             val catUsedMinutes = getTodayCategoryUsageMinutes(category).toInt() + liveSessionMinutes
-            val remaining = cat.dailyLimitMinutes - catUsedMinutes
-            val shouldBlock = catUsedMinutes >= cat.dailyLimitMinutes
+            val effectiveCategoryLimit = cat.dailyLimitMinutes + categorySnoozeMinutes
+            val remaining = effectiveCategoryLimit - catUsedMinutes
+            val shouldBlock = catUsedMinutes >= effectiveCategoryLimit
             val shouldWarn = remaining in 1..5 && !dailyState.warningShown
 
             return@withContext LimitCheckResult(
                 shouldBlock = shouldBlock,
                 shouldWarn = shouldWarn,
                 remainingMinutes = remaining.coerceAtLeast(0),
-                limitMinutes = cat.dailyLimitMinutes,
+                limitMinutes = effectiveCategoryLimit,
                 usedMinutes = catUsedMinutes,
                 blockingStyle = cat.blockingStyle,
                 snoozeMinutes = cat.snoozeMinutes,
-                appName = "$appName ($category Limit)"
+                appName = "$appName ($category Limit)",
+                categoryLimit = category
             )
         }
 
@@ -778,6 +783,36 @@ class UsageRepository(
         if (existing == null) {
             val today = UsageDayCalculator.getTodayUsageDate()
             appConfigDao.set(AppConfig("first_launch_date", today))
+        }
+    }
+
+    suspend fun snoozeCategory(category: String, extraMinutes: Int) = withContext(Dispatchers.IO) {
+        val today = UsageDayCalculator.getTodayUsageDate()
+        val key = "category_daily_state_$category"
+        val existing = appConfigDao.get(key)?.let {
+            try { JSONObject(it) } catch (_: Exception) { null }
+        }
+        val alreadyUsed = if (existing?.optString("usageDate") == today) {
+            existing.optInt("extraMinutes", 0)
+        } else 0
+        appConfigDao.set(
+            AppConfig(
+                key,
+                JSONObject().apply {
+                    put("usageDate", today)
+                    put("extraMinutes", alreadyUsed + extraMinutes)
+                }.toString()
+            )
+        )
+    }
+
+    private suspend fun getCategorySnoozeMinutes(category: String, usageDate: String): Int {
+        val raw = appConfigDao.get("category_daily_state_$category") ?: return 0
+        return try {
+            val state = JSONObject(raw)
+            if (state.optString("usageDate") == usageDate) state.optInt("extraMinutes", 0) else 0
+        } catch (_: Exception) {
+            0
         }
     }
 

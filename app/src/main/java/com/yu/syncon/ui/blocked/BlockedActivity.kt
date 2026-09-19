@@ -75,6 +75,7 @@ class BlockedActivity : ComponentActivity() {
         const val EXTRA_SNOOZE_MINUTES = "extra_snooze_minutes"
         const val EXTRA_LIMIT_MINUTES = "extra_limit_minutes"
         const val EXTRA_USED_MINUTES = "extra_used_minutes"
+        const val EXTRA_CATEGORY_LIMIT = "extra_category_limit"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,6 +91,7 @@ class BlockedActivity : ComponentActivity() {
         val blockingStyle = intent.getStringExtra(EXTRA_BLOCKING_STYLE)?.uppercase() ?: "STRICT"
         val snoozeMinutes = intent.getIntExtra(EXTRA_SNOOZE_MINUTES, 5)
         val limitMinutes = intent.getIntExtra(EXTRA_LIMIT_MINUTES, 60)
+        val categoryLimit = intent.getStringExtra(EXTRA_CATEGORY_LIMIT)
 
         setContent {
             SyncOnTheme(darkTheme = false) {
@@ -115,7 +117,11 @@ class BlockedActivity : ComponentActivity() {
                             snoozeMinutes = snoozeMinutes,
                             onSnooze = {
                                 scope.launch {
-                                    repository.snoozeApp(packageName, snoozeMinutes)
+                                    if (categoryLimit != null) {
+                                        repository.snoozeCategory(categoryLimit, snoozeMinutes)
+                                    } else {
+                                        repository.snoozeApp(packageName, snoozeMinutes)
+                                    }
                                     isSnoozeConfirmed = true
                                 }
                             },

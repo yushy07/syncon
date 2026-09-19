@@ -173,7 +173,8 @@ class BlockAccessibilityService : AccessibilityService() {
                 blockingStyle = limitCheck.blockingStyle,
                 snoozeMinutes = limitCheck.snoozeMinutes,
                 limitMinutes = limitCheck.limitMinutes,
-                usedMinutes = limitCheck.usedMinutes
+                usedMinutes = limitCheck.usedMinutes,
+                categoryLimit = limitCheck.categoryLimit
             )
         } else if (!dailyState.isBlocked) {
             // Live ongoing remaining time notification
@@ -191,7 +192,8 @@ class BlockAccessibilityService : AccessibilityService() {
         blockingStyle: String,
         snoozeMinutes: Int,
         limitMinutes: Int,
-        usedMinutes: Int
+        usedMinutes: Int,
+        categoryLimit: String?
     ) {
         // Send user to home first so the blocked application is cleanly backgrounded
         performGlobalAction(GLOBAL_ACTION_HOME)
@@ -204,6 +206,7 @@ class BlockAccessibilityService : AccessibilityService() {
             putExtra(BlockedActivity.EXTRA_SNOOZE_MINUTES, snoozeMinutes)
             putExtra(BlockedActivity.EXTRA_LIMIT_MINUTES, limitMinutes)
             putExtra(BlockedActivity.EXTRA_USED_MINUTES, usedMinutes)
+            putExtra(BlockedActivity.EXTRA_CATEGORY_LIMIT, categoryLimit)
         }
         startActivity(intent)
     }
