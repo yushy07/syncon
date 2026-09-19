@@ -58,13 +58,25 @@ class BlockAccessibilityService : AccessibilityService() {
                         Log.d(TAG, "Screen off: pausing active check loop and canceling live notification")
                         activeCheckJob?.cancel()
                         activeCheckJob = null
+                        // The repository is shared with ForegroundTrackingService. Clearing its
+                        // foreground session here prevents the service's five-minute safety check
+                        // from treating locked-screen time as live app usage.
+                        repository.setCurrentForegroundApp(null)
                         NotificationHelper.cancelLiveRemainingNotification(applicationContext)
                     }
-                    Intent.ACTION_SCREEN_ON, Intent.ACTION_USER_PRESENT -> {
-                        Log.d(TAG, "Screen on: resetting foreground baseline session start")
+                    Intent.ACTION_SCREEN_ON -> {
+                        // The display can be interactive while the lock screen is still visible.
+                        // Wait for USER_PRESENT before resuming app-time enforcement.
+                        Log.d(TAG, "Screen on: waiting for unlock before resuming checks")
+                    }
+                    Intent.ACTION_USER_PRESENT -> {
+                        Log.d(TAG, "Device unlocked: resetting foreground baseline session start")
                         val pkg = currentForegroundPackage
                         if (pkg != null && pkg != packageName && pkg != "com.android.systemui") {
                             currentForegroundSessionStartMs = System.currentTimeMillis()
+                            // Establish a new live baseline instead of continuing the session from
+                            // before the device was locked.
+                            repository.setCurrentForegroundApp(pkg)
                             startCheckLoop(pkg)
                         }
                     }
