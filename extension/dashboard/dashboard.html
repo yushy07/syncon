@@ -30,6 +30,7 @@
         <article class="card metric-card"><span class="muted">Chrome today</span><strong id="todayTotal" class="metric">0m</strong><span class="muted">4 AM – 4 AM</span></article>
         <article class="card metric-card"><span class="muted">Current focus</span><strong id="currentDomain">None</strong><span id="currentDuration" class="muted">Waiting for activity</span></article>
         <article class="card metric-card"><span class="muted">Most used</span><strong id="topDomain">—</strong><span id="topDuration" class="muted">No usage yet</span></article>
+        <article class="card metric-card"><span class="muted">Clean-day streak</span><strong id="cleanStreak" class="metric">0</strong><span class="muted">days without a block</span></article>
       </div>
       <div class="content-grid">
         <article class="card panel"><div class="row between"><h2>Today’s websites</h2><button class="text-button" data-go="websites">Manage limits</button></div><div id="todayDomains"></div></article>
@@ -61,11 +62,21 @@
           <button id="saveSettings" class="pill">Save tracking settings</button>
         </article>
         <article class="card panel">
+          <h2>Category budgets</h2>
+          <p class="muted">Share one daily budget across every website in a category.</p>
+          <div id="categoryLimits" class="category-limit-list"></div>
+          <button id="saveCategoryLimits" class="pill">Save category budgets</button>
+        </article>
+        <article class="card panel">
           <h2>Your data</h2>
           <p class="muted">The export is versioned and includes precise intervals, daily summaries, categories and limits.</p>
           <div class="row wrap"><button id="exportData" class="pill secondary">Export JSON</button><label class="pill secondary file-button">Import JSON<input id="importData" type="file" accept="application/json"></label></div>
           <div id="dataStats" class="data-stats"></div>
           <button id="clearData" class="pill danger">Clear Chrome history</button>
+        </article>
+        <article class="card panel">
+          <h2>Incognito policy</h2>
+          <p class="muted">SyncOn does not track Incognito by default. Chrome requires you to explicitly enable “Allow in Incognito.” When enabled, split mode keeps Incognito storage separate from normal browsing data.</p>
         </article>
         <article class="card panel">
           <h2>Backend readiness</h2>

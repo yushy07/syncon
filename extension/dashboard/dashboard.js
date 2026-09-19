@@ -4,6 +4,7 @@ let appState = null;
 let live = null;
 let trendDays = 7;
 let editingDomain = null;
+let intervalCount = 0;
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -44,6 +45,17 @@ function renderOverview() {
   $("#currentDuration").textContent = live.active.startedAt ? C.formatDuration(Date.now() - live.active.startedAt) + " in this focus session" : "Waiting for activity";
   $("#topDomain").textContent = sorted[0]?.[0] || "—";
   $("#topDuration").textContent = sorted[0] ? C.formatDuration(sorted[0][1]) : "No usage yet";
+  const blockedDates = new Set((appState.blockEvents || []).filter(item => item.eventType === "BLOCKED").map(item => item.usageDate));
+  const activityDates = Object.keys(appState.dailyTotals).sort();
+  let streak = 0;
+  if (activityDates.length) {
+    const first = activityDates[0];
+    for (const date of C.recentUsageDates(1095).reverse()) {
+      if (date < first || blockedDates.has(date)) break;
+      streak += 1;
+    }
+  }
+  $("#cleanStreak").textContent = String(streak);
   $("#todayDomains").innerHTML = domainRows(totals, 8);
 
   const categories = {};
@@ -90,9 +102,13 @@ function renderSettings() {
   $("#idleTimeout").value = String(appState.settings.idleThresholdSeconds || 60);
   $("#excludedDomains").value = (appState.settings.excludedDomains || []).join("\n");
   $("#dataStats").innerHTML = `
-    <div class="data-stat"><span>Precise intervals</span><strong>${appState.intervals.length}</strong></div>
+    <div class="data-stat"><span>Precise intervals</span><strong>${intervalCount}</strong></div>
     <div class="data-stat"><span>Known websites</span><strong>${Object.keys(appState.domains).length}</strong></div>
-    <div class="data-stat"><span>Configured limits</span><strong>${Object.values(appState.limits).filter(item => item.enabled).length}</strong></div>`;
+    <div class="data-stat"><span>Configured limits</span><strong>${Object.values(appState.limits).filter(item => item.enabled).length + Object.values(appState.categoryLimits).filter(item => item.enabled).length}</strong></div>`;
+  $("#categoryLimits").innerHTML = CATEGORIES.map(category => {
+    const limit = appState.categoryLimits[category] || { enabled: false, limitMinutes: 120, style: "STRICT", snoozeMinutes: 5 };
+    return `<label class="category-limit-control"><strong>${escapeHtml(category)}</strong><input data-category-minutes="${escapeHtml(category)}" type="number" min="1" max="1440" value="${limit.limitMinutes}"><select data-category-style="${escapeHtml(category)}"><option value="STRICT" ${limit.style === "STRICT" ? "selected" : ""}>Strict</option><option value="SOFT" ${limit.style === "SOFT" ? "selected" : ""}>Soft</option></select><input data-category-enabled="${escapeHtml(category)}" type="checkbox" ${limit.enabled ? "checked" : ""}></label>`;
+  }).join("");
   $("#backendInfo").innerHTML = `
     <div class="data-stat"><span>Platform</span><strong>CHROME</strong></div>
     <div class="data-stat"><span>Schema</span><strong>1</strong></div>
@@ -122,6 +138,7 @@ function openLimit(domain) {
 async function load() {
   live = await chrome.runtime.sendMessage({ type: "GET_LIVE_STATE" });
   appState = live.data;
+  intervalCount = (await chrome.runtime.sendMessage({ type: "GET_INTERVAL_STATS" })).count || 0;
   $("#categoryFilter").innerHTML += CATEGORIES.map(category => `<option>${category}</option>`).join("");
   $("#domainCategory").innerHTML = CATEGORIES.map(category => `<option>${category}</option>`).join("");
   renderAll();
@@ -161,8 +178,31 @@ $("#saveSettings").addEventListener("click", async () => {
   renderStatus(); toast("Tracking settings saved.");
 });
 
-$("#exportData").addEventListener("click", () => {
-  const payload = { kind: "SYNCON_EXTENSION_BACKUP", schemaVersion: 1, exportedAtUtc: Date.now(), sourcePlatform: "CHROME", sourceInstallationId: appState.installationId, data: { intervals: appState.intervals, dailyTotals: appState.dailyTotals, domains: appState.domains, limits: appState.limits, dailyStates: appState.dailyStates, settings: appState.settings } };
+$("#saveCategoryLimits").addEventListener("click", async () => {
+  const now = Date.now();
+  CATEGORIES.forEach(category => {
+    const previous = appState.categoryLimits[category] || {};
+    appState.categoryLimits[category] = {
+      recordId: previous.recordId || `chrome-category-limit:${category}`,
+      category,
+      enabled: $(`[data-category-enabled="${category}"]`).checked,
+      limitMinutes: Number($(`[data-category-minutes="${category}"]`).value) || 120,
+      style: $(`[data-category-style="${category}"]`).value,
+      snoozeMinutes: previous.snoozeMinutes || 5,
+      updatedAtUtc: now,
+      localRevision: (previous.localRevision || 0) + 1,
+      serverRevision: null,
+      syncState: "LOCAL_ONLY",
+      isDeleted: false
+    };
+  });
+  await chrome.storage.local.set({ categoryLimits: appState.categoryLimits });
+  renderSettings(); toast("Category budgets saved.");
+});
+
+$("#exportData").addEventListener("click", async () => {
+  const payload = await chrome.runtime.sendMessage({ type: "EXPORT_BACKUP" });
+  if (!payload?.data) return toast(payload?.error || "Could not export your data.");
   const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }));
   const anchor = document.createElement("a"); anchor.href = url; anchor.download = `syncon-chrome-${C.usageDate()}.json`; anchor.click(); URL.revokeObjectURL(url);
 });
@@ -170,16 +210,11 @@ $("#exportData").addEventListener("click", () => {
 $("#importData").addEventListener("change", async event => {
   try {
     const payload = JSON.parse(await event.target.files[0].text());
-    if (payload.kind !== "SYNCON_EXTENSION_BACKUP" || payload.schemaVersion !== 1 || !payload.data) throw new Error("Unsupported SyncOn backup");
-    const byId = new Map(appState.intervals.map(item => [item.recordId, item]));
-    (payload.data.intervals || []).forEach(item => { if (item.recordId && item.sourcePlatform === "CHROME") byId.set(item.recordId, item); });
-    appState.intervals = [...byId.values()];
-    appState.domains = { ...payload.data.domains, ...appState.domains };
-    appState.limits = { ...payload.data.limits, ...appState.limits };
-    appState.dailyStates = { ...payload.data.dailyStates, ...appState.dailyStates };
-    appState.dailyTotals = {};
-    appState.intervals.filter(item => !item.isDeleted).forEach(item => { appState.dailyTotals[item.usageDate] ||= {}; appState.dailyTotals[item.usageDate][item.sourceIdentifier] = (appState.dailyTotals[item.usageDate][item.sourceIdentifier] || 0) + item.durationMillis; });
-    await chrome.storage.local.set({ intervals: appState.intervals, domains: appState.domains, limits: appState.limits, dailyStates: appState.dailyStates, dailyTotals: appState.dailyTotals });
+    const result = await chrome.runtime.sendMessage({ type: "IMPORT_BACKUP", payload });
+    if (!result?.ok) throw new Error(result?.error || "Import failed");
+    intervalCount = result.count;
+    live = await chrome.runtime.sendMessage({ type: "GET_LIVE_STATE" });
+    appState = live.data;
     renderAll(); toast("Backup imported without changing this installation ID.");
   } catch (error) { toast(error.message || "Could not import this backup."); }
   event.target.value = "";
@@ -187,8 +222,8 @@ $("#importData").addEventListener("change", async event => {
 
 $("#clearData").addEventListener("click", async () => {
   if (!confirm("Clear all Chrome usage intervals and daily totals? Limits and settings will remain.")) return;
-  appState.intervals = []; appState.dailyTotals = {}; appState.dailyStates = {};
-  await chrome.storage.local.set({ intervals: [], dailyTotals: {}, dailyStates: {} });
+  await chrome.runtime.sendMessage({ type: "CLEAR_HISTORY" });
+  intervalCount = 0; appState.dailyTotals = {}; appState.dailyStates = {};
   renderAll(); toast("Chrome usage history cleared.");
 });
 

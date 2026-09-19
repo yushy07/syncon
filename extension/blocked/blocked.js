@@ -4,6 +4,7 @@ const style = params.get("style") || "STRICT";
 const snooze = Number(params.get("snooze")) || 5;
 const used = Number(params.get("used")) || 0;
 const limit = Number(params.get("limit")) || 0;
+const category = params.get("category");
 
 document.querySelector("#title").textContent = `${domain} is paused`;
 document.querySelector("#message").textContent = style === "SOFT"
@@ -17,7 +18,9 @@ if (style === "SOFT") {
   snoozeButton.className = "pill";
   snoozeButton.textContent = `Use ${snooze} more minutes`;
   snoozeButton.addEventListener("click", async () => {
-    await chrome.runtime.sendMessage({ type: "SNOOZE_DOMAIN", domain, minutes: snooze });
+    await chrome.runtime.sendMessage(category
+      ? { type: "SNOOZE_CATEGORY", category, minutes: snooze }
+      : { type: "SNOOZE_DOMAIN", domain, minutes: snooze });
     history.back();
   });
   actions.appendChild(snoozeButton);

@@ -10,7 +10,7 @@ h2 { margin: 0 0 16px; font-size: 17px; }
 .status-chip { padding: 9px 13px; border-radius: 999px; background: #eef6ef; color: #42684b; display: flex; align-items: center; gap: 8px; font-weight: 700; }
 .view { display: none; margin-top: 30px; }
 .view.active { display: block; }
-.metrics-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .metric-card { padding: 22px; display: grid; gap: 12px; min-height: 150px; }
 .metric-card > strong:not(.metric) { font-size: 23px; overflow: hidden; text-overflow: ellipsis; }
 .content-grid { margin-top: 18px; display: grid; grid-template-columns: 1.5fr 1fr; gap: 18px; }
@@ -45,6 +45,9 @@ input, select, textarea { border: 1px solid var(--border); border-radius: 12px; 
 .file-button input { display: none; }
 .data-stats, .info-list { display: grid; gap: 9px; margin: 18px 0; }
 .data-stat { display: flex; justify-content: space-between; padding-bottom: 9px; border-bottom: 1px solid var(--border); }
+.category-limit-list { display: grid; gap: 10px; margin: 16px 0; }
+.category-limit-control { display: grid; grid-template-columns: 1fr 72px 90px 22px; gap: 8px; align-items: center; }
+.category-limit-control input[type="number"], .category-limit-control select { width: 100%; min-width: 0; }
 dialog { width: min(480px, calc(100vw - 30px)); border: 0; border-radius: 24px; padding: 0; box-shadow: 0 30px 100px rgba(25,18,50,.25); }
 dialog::backdrop { background: rgba(36,30,48,.38); backdrop-filter: blur(4px); }
 dialog form { padding: 24px; }
