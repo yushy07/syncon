@@ -8,6 +8,7 @@
     "idle",
     "storage",
     "tabs",
+    "unlimitedStorage",
     "webNavigation"
   ],
   "host_permissions": ["<all_urls>"],

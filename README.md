@@ -293,6 +293,16 @@ syncon/
 
 ---
 
+## Chrome Extension
+
+The local-first Chrome companion lives in [`extension/`](extension/). It is self-contained and can be loaded directly through `chrome://extensions` using **Load unpacked**—no build step is required.
+
+The extension tracks focused domain-level activity, excludes idle and unfocused time, supports strict and soft website limits, and stores precise backend-ready intervals locally. It does not collect full URLs, page contents, form data, or search terms.
+
+The Android and Chrome clients share the activity model documented in [`shared/data-contract-v1.md`](shared/data-contract-v1.md). Neither client is connected to a backend yet.
+
+---
+
 ## License
 
 This project is licensed under the **Apache License, Version 2.0**.

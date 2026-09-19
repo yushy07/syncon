@@ -153,7 +153,10 @@ chrome.runtime.onStartup.addListener(async () => {
 chrome.alarms.onAlarm.addListener(async alarm => {
   if (alarm.name !== ALARM_NAME) return;
   if (active.domain && !isIdle) {
-    await commitActive();
+    // Enforce every 30 seconds, but avoid creating and rewriting an interval record on every
+    // check. Long uninterrupted sessions are durably checkpointed every five minutes; tab,
+    // focus, idle and shutdown transitions still commit immediately.
+    if (Date.now() - active.startedAt >= 5 * 60_000) await commitActive();
     const [tab] = await chrome.tabs.query({ active: true, windowId: active.windowId });
     await enforce(tab);
   }
