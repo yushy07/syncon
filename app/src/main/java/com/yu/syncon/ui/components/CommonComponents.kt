@@ -22,7 +22,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -45,11 +50,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yu.syncon.data.local.entity.AppInfo
+import com.yu.syncon.ui.theme.AccentAmber
 import com.yu.syncon.ui.theme.AccentCoral
 import com.yu.syncon.ui.theme.AccentCoralLight
+import com.yu.syncon.ui.theme.AccentSage
 import com.yu.syncon.ui.theme.CardBorder
 import com.yu.syncon.ui.theme.CardShape
 import com.yu.syncon.ui.theme.CardSurface
+import com.yu.syncon.ui.theme.CardSurfaceVariant
 import com.yu.syncon.ui.theme.PillButtonShape
 import com.yu.syncon.ui.theme.PrimaryIndigo
 import com.yu.syncon.ui.theme.PrimaryIndigoHover
@@ -285,19 +293,37 @@ fun AppIcon(
             modifier = modifier.clip(RoundedCornerShape(12.dp))
         )
     } else {
+        val vectorIcon = when (category.lowercase()) {
+            "social media", "social" -> Icons.Default.Share
+            "entertainment" -> Icons.Default.PlayArrow
+            "browser" -> Icons.Default.Language
+            "communication" -> Icons.AutoMirrored.Filled.Chat
+            "system / utility", "system", "utility" -> Icons.Default.Build
+            else -> null
+        }
+
         Box(
             modifier = modifier
                 .clip(RoundedCornerShape(12.dp))
                 .background(categoryColor.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = appName.firstOrNull()?.uppercase() ?: "?",
-                style = MaterialTheme.typography.titleMedium.copy(
-                    color = categoryColor,
-                    fontWeight = FontWeight.Bold
+            if (vectorIcon != null) {
+                Icon(
+                    imageVector = vectorIcon,
+                    contentDescription = appName,
+                    tint = categoryColor,
+                    modifier = Modifier.size(24.dp)
                 )
-            )
+            } else {
+                Text(
+                    text = appName.firstOrNull()?.uppercase() ?: "?",
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        color = categoryColor,
+                        fontWeight = FontWeight.Bold
+                    )
+                )
+            }
         }
     }
 }
@@ -322,81 +348,106 @@ fun AppListRowItem(
             .fillMaxWidth()
             .clickable(onClick = onClick)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // App Avatar Icon (using real system icon or category fallback)
-            AppIcon(
-                packageName = app.packageName,
-                appName = app.appName,
-                category = app.category,
-                modifier = Modifier.size(44.dp)
-            )
-
-            Spacer(modifier = Modifier.width(14.dp))
-
-            // Name + Category Badge
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = app.appName,
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // App Avatar Icon (using real system icon or category fallback)
+                AppIcon(
+                    packageName = app.packageName,
+                    appName = app.appName,
+                    category = app.category,
+                    modifier = Modifier.size(44.dp)
                 )
-                Spacer(modifier = Modifier.height(2.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(categoryColor)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
+
+                Spacer(modifier = Modifier.width(14.dp))
+
+                // Name + Category Badge
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = app.category,
-                        style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
-                        color = TextSecondary
+                        text = app.appName,
+                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
-                    if (app.isSystemApp) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(categoryColor)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = " • System",
+                            text = app.category,
                             style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
                             color = TextSecondary
+                        )
+                        if (app.isSystemApp) {
+                            Text(
+                                text = " • System",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.sp),
+                                color = TextSecondary
+                            )
+                        }
+                    }
+                }
+
+                // Usage or Warning
+                Column(horizontalAlignment = Alignment.End) {
+                    if (isApproaching) {
+                        Text(
+                            text = "${durationMinutes}/${limitMinutes}m",
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                color = AccentCoral,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        )
+                        Text(
+                            text = "${remaining} min left",
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = AccentCoral,
+                                fontSize = 11.sp
+                            )
+                        )
+                    } else {
+                        val hours = durationMinutes / 60
+                        val mins = durationMinutes % 60
+                        val timeStr = if (hours > 0) "${hours}h ${mins}m" else "${mins}m"
+                        Text(
+                            text = timeStr,
+                            style = MaterialTheme.typography.labelLarge.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextPrimary
+                            )
                         )
                     }
                 }
             }
 
-            // Usage or Warning
-            Column(horizontalAlignment = Alignment.End) {
-                if (isApproaching) {
-                    Text(
-                        text = "${durationMinutes}/${limitMinutes}m",
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            color = AccentCoral,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    )
-                    Text(
-                        text = "${remaining} min left",
-                        style = MaterialTheme.typography.bodyMedium.copy(
-                            color = AccentCoral,
-                            fontSize = 11.sp
-                        )
-                    )
-                } else {
-                    val hours = durationMinutes / 60
-                    val mins = durationMinutes % 60
-                    val timeStr = if (hours > 0) "${hours}h ${mins}m" else "${mins}m"
-                    Text(
-                        text = timeStr,
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            color = TextPrimary
-                        )
+            // Visual Budget Progress Bar along card bottom edge
+            if (limitMinutes != null && limitMinutes > 0) {
+                val progress = (durationMinutes.toFloat() / limitMinutes).coerceIn(0f, 1f)
+                val barColor = when {
+                    progress >= 0.90f -> AccentCoral
+                    progress >= 0.75f -> AccentAmber
+                    else -> AccentSage
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp)
+                        .background(CardSurfaceVariant)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(fraction = progress)
+                            .height(3.dp)
+                            .background(barColor)
                     )
                 }
             }

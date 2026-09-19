@@ -24,6 +24,8 @@ import com.yu.syncon.util.UsageDayCalculator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -47,6 +49,7 @@ class UsageRepository(
     // ---------------------------------------------------------
 
     suspend fun syncInstalledApps() = withContext(Dispatchers.IO) {
+        initFirstLaunchDateIfNeeded()
         val packageManager = context?.packageManager ?: return@withContext
         val installedApps = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -364,10 +367,17 @@ class UsageRepository(
     )
 
     suspend fun checkAppLimit(packageName: String): LimitCheckResult? = withContext(Dispatchers.IO) {
-        val settings = appLimitSettingsDao.getSettings(packageName) ?: return@withContext null
-        if (!settings.isEnabled || settings.dailyLimitMinutes == null) return@withContext null
+        val settings = appLimitSettingsDao.getSettings(packageName)
+        val appInfo = appInfoDao.getApp(packageName)
+        val appName = appInfo?.appName ?: packageName
+        val category = appInfo?.category ?: "Other"
+        val catLimit = getCategoryLimit(category)
 
-        val limit = settings.dailyLimitMinutes
+        val hasAppLimit = settings != null && settings.isEnabled && settings.dailyLimitMinutes != null
+        val hasCatLimit = catLimit != null && catLimit.isEnabled
+
+        if (!hasAppLimit && !hasCatLimit) return@withContext null
+
         val today = UsageDayCalculator.getTodayUsageDate()
         val dailyState = appDailyStateDao.getOrCreateState(packageName, today)
         val usage = dailyUsageDao.getUsage(packageName, today)
@@ -375,30 +385,57 @@ class UsageRepository(
 
         // Include current in-progress foreground session minutes if checking the active app
         if (packageName == currentForegroundPackage && currentForegroundSessionStartMs > 0L) {
-            val liveMs = System.currentTimeMillis() - currentForegroundSessionStartMs
+            val lastUpdatedAt = usage?.lastUpdatedAt ?: 0L
+            val elapsedBaselineMs = maxOf(currentForegroundSessionStartMs, lastUpdatedAt)
+            val liveMs = System.currentTimeMillis() - elapsedBaselineMs
             if (liveMs > 0) {
                 usedMinutes += (liveMs / 60000L).toInt()
             }
         }
 
-        val effectiveLimit = limit + dailyState.extraSnoozeMinutesUsedToday
-        val remaining = effectiveLimit - usedMinutes
+        // 1. Evaluate per-app limit if set
+        if (hasAppLimit) {
+            val limit = settings.dailyLimitMinutes
+            val effectiveLimit = limit + dailyState.extraSnoozeMinutesUsedToday
+            val remaining = effectiveLimit - usedMinutes
+            val shouldBlock = usedMinutes >= effectiveLimit
+            val shouldWarn = remaining in 1..5 && !dailyState.warningShown
 
-        val shouldBlock = usedMinutes >= effectiveLimit
-        val shouldWarn = remaining in 1..5 && !dailyState.warningShown
+            if (shouldBlock || shouldWarn || !hasCatLimit) {
+                return@withContext LimitCheckResult(
+                    shouldBlock = shouldBlock,
+                    shouldWarn = shouldWarn,
+                    remainingMinutes = remaining.coerceAtLeast(0),
+                    limitMinutes = effectiveLimit,
+                    usedMinutes = usedMinutes,
+                    blockingStyle = settings.blockingStyle,
+                    snoozeMinutes = settings.snoozeMinutes,
+                    appName = appName
+                )
+            }
+        }
 
-        val appName = appInfoDao.getApp(packageName)?.appName ?: packageName
+        // 2. Evaluate category budget if set
+        if (hasCatLimit) {
+            val cat = catLimit
+            val catUsedMinutes = getTodayCategoryUsageMinutes(category).toInt()
+            val remaining = cat.dailyLimitMinutes - catUsedMinutes
+            val shouldBlock = catUsedMinutes >= cat.dailyLimitMinutes
+            val shouldWarn = remaining in 1..5 && !dailyState.warningShown
 
-        LimitCheckResult(
-            shouldBlock = shouldBlock,
-            shouldWarn = shouldWarn,
-            remainingMinutes = remaining.coerceAtLeast(0),
-            limitMinutes = effectiveLimit,
-            usedMinutes = usedMinutes,
-            blockingStyle = settings.blockingStyle,
-            snoozeMinutes = settings.snoozeMinutes,
-            appName = appName
-        )
+            return@withContext LimitCheckResult(
+                shouldBlock = shouldBlock,
+                shouldWarn = shouldWarn,
+                remainingMinutes = remaining.coerceAtLeast(0),
+                limitMinutes = cat.dailyLimitMinutes,
+                usedMinutes = catUsedMinutes,
+                blockingStyle = cat.blockingStyle,
+                snoozeMinutes = cat.snoozeMinutes,
+                appName = "$appName ($category Limit)"
+            )
+        }
+
+        return@withContext null
     }
 
     suspend fun markWarningShown(packageName: String) = withContext(Dispatchers.IO) {
@@ -430,6 +467,7 @@ class UsageRepository(
     suspend fun snoozeApp(packageName: String, extraMinutes: Int) = withContext(Dispatchers.IO) {
         val today = UsageDayCalculator.getTodayUsageDate()
         appDailyStateDao.addSnoozeMinutes(packageName, today, extraMinutes)
+        appDailyStateDao.setIsBlocked(packageName, today, false)
         blockEventDao.insert(
             BlockEvent(
                 packageName = packageName,
@@ -527,4 +565,396 @@ class UsageRepository(
                 Pair(app, total.totalMinutes)
             }
         }
+
+    data class ScreentimePersona(
+        val title: String,
+        val emoji: String,
+        val tagline: String,
+        val touchGrassRatioPercent: Int,
+        val cleanDaysCount: Int,
+        val dailyAverageMinutes: Long,
+        val peakDayName: String?,
+        val peakDayMinutes: Long,
+        val lowestDayName: String?,
+        val lowestDayMinutes: Long,
+        val peakWindowText: String,
+        val peakWindowSharePercent: Int,
+        val deltaPercentVsPreviousPeriod: Int
+    )
+
+    suspend fun getTrendsInsights(dates: List<String>): ScreentimePersona = withContext(Dispatchers.IO) {
+        val usageMap = getUsageForDates(dates)
+        val totalMinutes = usageMap.values.sum()
+        val dailyAvg = if (dates.isNotEmpty()) totalMinutes / dates.size else 0L
+
+        var peakDayStr: String? = null
+        var peakMins = 0L
+        var lowestDayStr: String? = null
+        var lowestMins = Long.MAX_VALUE
+
+        for ((date, mins) in usageMap) {
+            if (mins >= peakMins) {
+                peakMins = mins
+                peakDayStr = date
+            }
+            if (mins in 1..lowestMins) {
+                lowestMins = mins
+                lowestDayStr = date
+            }
+        }
+        if (lowestMins == Long.MAX_VALUE) lowestMins = 0L
+
+        val dayFormatter = DateTimeFormatter.ofPattern("EEE", java.util.Locale.ENGLISH)
+        val peakDayName = peakDayStr?.let {
+            try { LocalDate.parse(it, DateTimeFormatter.ISO_LOCAL_DATE).format(dayFormatter) } catch (_: Exception) { null }
+        }
+        val lowestDayName = lowestDayStr?.let {
+            try { LocalDate.parse(it, DateTimeFormatter.ISO_LOCAL_DATE).format(dayFormatter) } catch (_: Exception) { null }
+        }
+
+        // Previous period comparison
+        val prevDates = UsageDayCalculator.getRecentUsageDates(dates.size * 2).take(dates.size)
+        val prevUsageMap = getUsageForDates(prevDates)
+        val prevTotal = prevUsageMap.values.sum()
+        val deltaPercent = if (prevTotal > 0) {
+            (((totalMinutes - prevTotal).toFloat() / prevTotal) * 100).toInt()
+        } else {
+            0
+        }
+
+        // Touch Grass ratio: waking day = 16 hours (960 min)
+        val touchGrassRatio = ((1f - (dailyAvg.toFloat() / 960f).coerceIn(0f, 0.95f)) * 100).toInt()
+        val cleanDays = usageMap.count { it.value in 1..180 }
+
+        // Hourly distribution / Peak window
+        val hourlyBars = getTodayHourlyUsage()
+        val maxHourlyBucket = hourlyBars.maxByOrNull { it.valueMinutes }
+        val hourlyTotal = hourlyBars.sumOf { it.valueMinutes }.coerceAtLeast(1L)
+        val peakWindowShare = if (maxHourlyBucket != null && hourlyTotal > 0) {
+            ((maxHourlyBucket.valueMinutes.toFloat() / hourlyTotal) * 100).toInt()
+        } else {
+            35
+        }
+
+        val peakWindowLabel = when (maxHourlyBucket?.label) {
+            "12AM" -> "Late Night Doomscroll (12 AM – 4 AM)"
+            "4AM" -> "Early Dawn (4 AM – 8 AM)"
+            "8AM" -> "Morning Peak (8 AM – 12 PM)"
+            "12PM" -> "Midday Scroller (12 PM – 4 PM)"
+            "4PM" -> "Evening Wind-Down (4 PM – 8 PM)"
+            "8PM" -> "Night Chill (8 PM – 12 AM)"
+            else -> "Evening Prime (6 PM – 10 PM)"
+        }
+
+        val startDate = dates.firstOrNull() ?: ""
+        val endDate = dates.lastOrNull() ?: ""
+        val topApps = getTopAppsBetweenDates(startDate, endDate)
+        val categoryMinutes = mutableMapOf<String, Long>()
+        for ((app, mins) in topApps) {
+            categoryMinutes[app.category] = (categoryMinutes[app.category] ?: 0L) + mins
+        }
+        val safeTotal = totalMinutes.coerceAtLeast(1L)
+        val socialShare = (((categoryMinutes["Social Media"] ?: 0L) + (categoryMinutes["Communication"] ?: 0L)).toFloat() / safeTotal) * 100
+        val entertainmentShare = ((categoryMinutes["Entertainment"] ?: 0L).toFloat() / safeTotal) * 100
+
+        val (title, emoji, tagline) = when {
+            dailyAvg <= 120 -> Triple("Zen Monk", "🧘", "Grounded, mindful, and touching grass")
+            maxHourlyBucket?.label == "12AM" || maxHourlyBucket?.label == "8PM" ->
+                Triple("Night Owl", "🦉", "Peak active when the midnight vibe hits")
+            socialShare >= 45 -> Triple("Social Butterfly", "💬", "Deep in the DMs & community feeds")
+            entertainmentShare >= 40 -> Triple("Marathon Diver", "🎬", "Immersed in streaming & content flow")
+            dailyAvg >= 360 -> Triple("Digital Hustler", "⚡", "Always online with hyper velocity")
+            else -> Triple("Digital Explorer", "🧭", "Curious, balanced multifaceted mobile lifestyle")
+        }
+
+        ScreentimePersona(
+            title = title,
+            emoji = emoji,
+            tagline = tagline,
+            touchGrassRatioPercent = touchGrassRatio,
+            cleanDaysCount = cleanDays,
+            dailyAverageMinutes = dailyAvg,
+            peakDayName = peakDayName,
+            peakDayMinutes = peakMins,
+            lowestDayName = lowestDayName,
+            lowestDayMinutes = lowestMins,
+            peakWindowText = peakWindowLabel,
+            peakWindowSharePercent = peakWindowShare,
+            deltaPercentVsPreviousPeriod = deltaPercent
+        )
+    }
+
+    // ---------------------------------------------------------
+    // PRD v2 Addendum: State, Streak & Export Support
+    // ---------------------------------------------------------
+
+    suspend fun initFirstLaunchDateIfNeeded() = withContext(Dispatchers.IO) {
+        val existing = appConfigDao.get("first_launch_date")
+        if (existing == null) {
+            val today = UsageDayCalculator.getTodayUsageDate()
+            appConfigDao.set(AppConfig("first_launch_date", today))
+        }
+    }
+
+    suspend fun getOrCreateDailyState(packageName: String, usageDate: String): AppDailyState = withContext(Dispatchers.IO) {
+        appDailyStateDao.getOrCreateState(packageName, usageDate)
+    }
+
+    suspend fun getDailyUsage(packageName: String, usageDate: String): DailyUsage? = withContext(Dispatchers.IO) {
+        dailyUsageDao.getUsage(packageName, usageDate)
+    }
+
+    suspend fun calculateCleanDayStreak(): Int = withContext(Dispatchers.IO) {
+        initFirstLaunchDateIfNeeded()
+        val firstLaunchStr = appConfigDao.get("first_launch_date") ?: UsageDayCalculator.getTodayUsageDate()
+        val firstLaunchDate = try {
+            LocalDate.parse(firstLaunchStr, DateTimeFormatter.ISO_LOCAL_DATE)
+        } catch (_: Exception) {
+            LocalDate.now()
+        }
+
+        val todayStr = UsageDayCalculator.getTodayUsageDate()
+        var currentDay = try {
+            LocalDate.parse(todayStr, DateTimeFormatter.ISO_LOCAL_DATE)
+        } catch (_: Exception) {
+            LocalDate.now()
+        }
+
+        var streak = 0
+        while (!currentDay.isBefore(firstLaunchDate)) {
+            val dayStr = currentDay.format(DateTimeFormatter.ISO_LOCAL_DATE)
+            val blockedCount = blockEventDao.getBlockedEventCountForDate(dayStr)
+            if (blockedCount > 0) {
+                break
+            }
+            streak++
+            currentDay = currentDay.minusDays(1)
+        }
+        streak
+    }
+
+    suspend fun exportAllDataAsJson(): String = withContext(Dispatchers.IO) {
+        val appInfos = appInfoDao.getAllStatic()
+        val dailyUsages = dailyUsageDao.getAllStatic()
+        val limitSettings = appLimitSettingsDao.getAllStatic()
+        val blockEvents = blockEventDao.getAllStatic()
+
+        val root = JSONObject()
+        root.put("exported_at", System.currentTimeMillis())
+        root.put("export_date", UsageDayCalculator.getTodayUsageDate())
+        root.put("version", "1.0.0")
+
+        val appsArray = JSONArray()
+        for (app in appInfos) {
+            val obj = JSONObject()
+            obj.put("packageName", app.packageName)
+            obj.put("appName", app.appName)
+            obj.put("category", app.category)
+            obj.put("isCategoryManuallySet", app.isCategoryManuallySet)
+            obj.put("isSystemApp", app.isSystemApp)
+            appsArray.put(obj)
+        }
+        root.put("app_info", appsArray)
+
+        val usageArray = JSONArray()
+        for (usage in dailyUsages) {
+            val obj = JSONObject()
+            obj.put("packageName", usage.packageName)
+            obj.put("usageDate", usage.usageDate)
+            obj.put("durationMinutes", usage.durationMinutes)
+            obj.put("lastUpdatedAt", usage.lastUpdatedAt)
+            usageArray.put(obj)
+        }
+        root.put("daily_usage", usageArray)
+
+        val limitsArray = JSONArray()
+        for (setting in limitSettings) {
+            val obj = JSONObject()
+            obj.put("packageName", setting.packageName)
+            obj.put("dailyLimitMinutes", setting.dailyLimitMinutes)
+            obj.put("blockingStyle", setting.blockingStyle)
+            obj.put("snoozeMinutes", setting.snoozeMinutes)
+            obj.put("isEnabled", setting.isEnabled)
+            limitsArray.put(obj)
+        }
+        root.put("app_limit_settings", limitsArray)
+
+        val eventsArray = JSONArray()
+        for (event in blockEvents) {
+            val obj = JSONObject()
+            obj.put("id", event.id)
+            obj.put("packageName", event.packageName)
+            obj.put("usageDate", event.usageDate)
+            obj.put("eventType", event.eventType)
+            obj.put("timestamp", event.timestamp)
+            eventsArray.put(obj)
+        }
+        root.put("block_event_log", eventsArray)
+
+        root.toString(2)
+    }
+
+    // ---------------------------------------------------------
+    // App Open / Launch Counts
+    // ---------------------------------------------------------
+
+    suspend fun getTodayAppLaunchCounts(): Map<String, Int> = withContext(Dispatchers.IO) {
+        val mgr = usageStatsManager ?: return@withContext emptyMap()
+        val today = UsageDayCalculator.getTodayUsageDate()
+        val (startOfDayMs, _) = UsageDayCalculator.getUsageDayRange(today)
+        val now = System.currentTimeMillis()
+        val counts = mutableMapOf<String, Int>()
+        try {
+            val events = mgr.queryEvents(startOfDayMs, now)
+            val event = UsageEvents.Event()
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                val isResume = (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED || event.eventType == 1)
+                if (isResume) {
+                    val pkg = event.packageName ?: continue
+                    counts[pkg] = (counts[pkg] ?: 0) + 1
+                }
+            }
+        } catch (_: Exception) {}
+        counts
+    }
+
+    // ---------------------------------------------------------
+    // Category Budgets / Group Limits
+    // ---------------------------------------------------------
+
+    data class CategoryLimitSetting(
+        val category: String,
+        val dailyLimitMinutes: Int,
+        val blockingStyle: String = "STRICT",
+        val snoozeMinutes: Int = 5,
+        val isEnabled: Boolean = true
+    )
+
+    suspend fun getCategoryLimit(category: String): CategoryLimitSetting? = withContext(Dispatchers.IO) {
+        val json = appConfigDao.get("cat_limit_$category") ?: return@withContext null
+        try {
+            val obj = JSONObject(json)
+            CategoryLimitSetting(
+                category = obj.getString("category"),
+                dailyLimitMinutes = obj.getInt("dailyLimitMinutes"),
+                blockingStyle = obj.optString("blockingStyle", "STRICT"),
+                snoozeMinutes = obj.optInt("snoozeMinutes", 5),
+                isEnabled = obj.optBoolean("isEnabled", true)
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    suspend fun saveCategoryLimit(setting: CategoryLimitSetting) = withContext(Dispatchers.IO) {
+        val obj = JSONObject().apply {
+            put("category", setting.category)
+            put("dailyLimitMinutes", setting.dailyLimitMinutes)
+            put("blockingStyle", setting.blockingStyle)
+            put("snoozeMinutes", setting.snoozeMinutes)
+            put("isEnabled", setting.isEnabled)
+        }
+        appConfigDao.set(AppConfig("cat_limit_${setting.category}", obj.toString()))
+    }
+
+    suspend fun deleteCategoryLimit(category: String) = withContext(Dispatchers.IO) {
+        appConfigDao.delete("cat_limit_$category")
+    }
+
+    suspend fun getAllCategoryLimits(): List<CategoryLimitSetting> = withContext(Dispatchers.IO) {
+        CategoryMapper.ALL_CATEGORIES.mapNotNull { cat ->
+            getCategoryLimit(cat)
+        }
+    }
+
+    suspend fun getTodayCategoryUsageMinutes(category: String): Long = withContext(Dispatchers.IO) {
+        val today = UsageDayCalculator.getTodayUsageDate()
+        val usages = dailyUsageDao.getUsageForDateStatic(today)
+        val apps = appInfoDao.getAllStatic().associateBy { it.packageName }
+        usages.filter { (apps[it.packageName]?.category ?: "Other") == category }
+            .sumOf { it.durationMinutes }
+    }
+
+    // ---------------------------------------------------------
+    // Data Import & Restore
+    // ---------------------------------------------------------
+
+    suspend fun importDataFromJson(jsonString: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val root = JSONObject(jsonString)
+            var restoredApps = 0
+            var restoredUsages = 0
+            var restoredLimits = 0
+
+            // 1. App Infos
+            val appsArray = root.optJSONArray("app_info")
+            if (appsArray != null) {
+                val appList = mutableListOf<AppInfo>()
+                for (i in 0 until appsArray.length()) {
+                    val obj = appsArray.getJSONObject(i)
+                    appList.add(
+                        AppInfo(
+                            packageName = obj.getString("packageName"),
+                            appName = obj.getString("appName"),
+                            category = obj.getString("category"),
+                            isCategoryManuallySet = obj.optBoolean("isCategoryManuallySet", false),
+                            isSystemApp = obj.optBoolean("isSystemApp", false)
+                        )
+                    )
+                }
+                if (appList.isNotEmpty()) {
+                    appInfoDao.insertOrIgnoreAll(appList)
+                    restoredApps = appList.size
+                }
+            }
+
+            // 2. Daily Usages
+            val usagesArray = root.optJSONArray("daily_usage")
+            if (usagesArray != null) {
+                val usagesList = mutableListOf<DailyUsage>()
+                for (i in 0 until usagesArray.length()) {
+                    val obj = usagesArray.getJSONObject(i)
+                    usagesList.add(
+                        DailyUsage(
+                            packageName = obj.getString("packageName"),
+                            usageDate = obj.getString("usageDate"),
+                            durationMinutes = obj.getLong("durationMinutes"),
+                            lastUpdatedAt = obj.optLong("lastUpdatedAt", System.currentTimeMillis())
+                        )
+                    )
+                }
+                if (usagesList.isNotEmpty()) {
+                    dailyUsageDao.insertAll(usagesList)
+                    restoredUsages = usagesList.size
+                }
+            }
+
+            // 3. Limit Settings
+            val limitsArray = root.optJSONArray("app_limit_settings")
+            if (limitsArray != null) {
+                for (i in 0 until limitsArray.length()) {
+                    val obj = limitsArray.getJSONObject(i)
+                    val limitMinutes = if (obj.has("dailyLimitMinutes") && !obj.isNull("dailyLimitMinutes")) {
+                        obj.getInt("dailyLimitMinutes")
+                    } else null
+
+                    appLimitSettingsDao.upsert(
+                        AppLimitSettings(
+                            packageName = obj.getString("packageName"),
+                            dailyLimitMinutes = limitMinutes,
+                            blockingStyle = obj.optString("blockingStyle", "STRICT"),
+                            snoozeMinutes = obj.optInt("snoozeMinutes", 5),
+                            isEnabled = obj.optBoolean("isEnabled", true)
+                        )
+                    )
+                    restoredLimits++
+                }
+            }
+
+            Result.success("Restored $restoredApps apps, $restoredUsages usage records, and $restoredLimits app limits.")
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }

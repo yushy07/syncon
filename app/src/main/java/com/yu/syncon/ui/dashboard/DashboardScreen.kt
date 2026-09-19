@@ -21,9 +21,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.HourglassEmpty
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +35,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -50,6 +55,7 @@ import com.yu.syncon.ui.components.MiniBarItem
 import com.yu.syncon.ui.components.MiniBarRow
 import com.yu.syncon.ui.components.TaglineItalicText
 import com.yu.syncon.ui.components.WarningAlertBanner
+import com.yu.syncon.ui.theme.AccentAmber
 import com.yu.syncon.ui.theme.AccentCoral
 import com.yu.syncon.ui.theme.AccentCoralLight
 import com.yu.syncon.ui.theme.AccentSage
@@ -95,6 +101,16 @@ fun DashboardScreen(
     LaunchedEffect(totalMinutes) {
         hourlyBars = repository.getTodayHourlyUsage()
     }
+
+    val cleanDayStreak by produceState(initialValue = 0) {
+        value = repository.calculateCleanDayStreak()
+    }
+
+    val categoryLimits by produceState<Map<String, UsageRepository.CategoryLimitSetting>>(initialValue = emptyMap(), key1 = totalMinutes) {
+        value = repository.getAllCategoryLimits().associateBy { it.category }
+    }
+
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
     val positiveUsages = todayUsages.filter { it.durationMinutes > 0 }.sortedByDescending { it.durationMinutes }
     val todayMins = totalMinutes ?: 0L
@@ -150,7 +166,10 @@ fun DashboardScreen(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50.dp))
                         .background(AccentSageLight)
-                        .clickable(onClick = onTrackingStatusClick)
+                        .clickable(onClick = {
+                            haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                            onTrackingStatusClick()
+                        })
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -262,6 +281,7 @@ fun DashboardScreen(
             TodayHeroCard(
                 todayMinutes = todayMins,
                 yesterdayMinutes = yestMins,
+                cleanDayStreak = cleanDayStreak,
                 hourlyBars = hourlyBars
             )
         }
@@ -375,10 +395,12 @@ fun DashboardScreen(
                 }.map { (category, usages) ->
                     val totalCatMinutes = usages.sumOf { it.durationMinutes }
                     val appCount = usages.size
+                    val catLimit = categoryLimits[category]?.takeIf { it.isEnabled }?.dailyLimitMinutes
                     CategoryUsageItem(
                         category = category,
                         totalMinutes = totalCatMinutes,
-                        appCount = appCount
+                        appCount = appCount,
+                        limitMinutes = catLimit
                     )
                 }.sortedByDescending { it.totalMinutes }
 
@@ -398,10 +420,19 @@ fun DashboardScreen(
 private fun TodayHeroCard(
     todayMinutes: Long,
     yesterdayMinutes: Long,
+    cleanDayStreak: Int,
     hourlyBars: List<com.yu.syncon.ui.components.BarChartItem>
 ) {
-    val hours = todayMinutes / 60
-    val minutes = todayMinutes % 60
+    val animatedMinutes by animateIntAsState(
+        targetValue = todayMinutes.toInt(),
+        animationSpec = tween(
+            durationMillis = 650,
+            easing = FastOutSlowInEasing
+        ),
+        label = "hero_screen_time"
+    )
+    val hours = animatedMinutes / 60
+    val minutes = animatedMinutes % 60
     val diff = (todayMinutes - yesterdayMinutes)
 
     Card(
@@ -411,12 +442,56 @@ private fun TodayHeroCard(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Text(
-                text = "Screen Time",
-                style = MaterialTheme.typography.titleSmall,
-                color = TextSecondary,
-                fontWeight = FontWeight.Medium
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Screen Time",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = TextSecondary,
+                    fontWeight = FontWeight.Medium
+                )
+                if (cleanDayStreak > 0) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50.dp))
+                            .background(AccentSageLight)
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(AccentSage)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = if (cleanDayStreak == 1) "1 clean day" else "$cleanDayStreak clean days",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AccentSage,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50.dp))
+                            .background(PrimaryIndigoLight)
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "0 clean days",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = PrimaryIndigo,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -473,11 +548,15 @@ private fun FilterToggleChip(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     Box(
         modifier = Modifier
             .clip(FilterChipShape)
             .background(if (selected) PrimaryIndigo else Color.Transparent)
-            .clickable(onClick = onClick)
+            .clickable(onClick = {
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                onClick()
+            })
             .padding(horizontal = 14.dp, vertical = 6.dp)
     ) {
         Text(
@@ -492,7 +571,8 @@ private fun FilterToggleChip(
 private data class CategoryUsageItem(
     val category: String,
     val totalMinutes: Long,
-    val appCount: Int
+    val appCount: Int,
+    val limitMinutes: Int? = null
 )
 
 @Composable
@@ -508,39 +588,68 @@ private fun CategoryRowCard(item: CategoryUsageItem) {
         border = BorderStroke(1.dp, CardBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
                 modifier = Modifier
-                    .size(14.dp)
-                    .clip(CircleShape)
-                    .background(color)
-            )
-            Spacer(modifier = Modifier.width(14.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.category,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = TextPrimary
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(14.dp)
+                        .clip(CircleShape)
+                        .background(color)
                 )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "${item.appCount} apps",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = item.category,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "${item.appCount} apps",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = if (item.limitMinutes != null) "$timeStr / ${item.limitMinutes}m" else timeStr,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (item.limitMinutes != null && item.totalMinutes >= item.limitMinutes) AccentCoral else TextPrimary
+                    )
+                    if (item.limitMinutes != null) {
+                        val remaining = (item.limitMinutes - item.totalMinutes).coerceAtLeast(0)
+                        Text(
+                            text = if (remaining == 0L) "Limit reached" else "$remaining min left",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (remaining == 0L) AccentCoral else TextSecondary
+                        )
+                    }
+                }
+            }
+
+            if (item.limitMinutes != null && item.limitMinutes > 0) {
+                val progress = (item.totalMinutes.toFloat() / item.limitMinutes).coerceIn(0f, 1f)
+                val barColor = when {
+                    progress >= 0.9f -> AccentCoral
+                    progress >= 0.75f -> AccentAmber
+                    else -> AccentSage
+                }
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(3.dp),
+                    color = barColor,
+                    trackColor = CardBorder
                 )
             }
-            Text(
-                text = timeStr,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-            )
         }
     }
 }

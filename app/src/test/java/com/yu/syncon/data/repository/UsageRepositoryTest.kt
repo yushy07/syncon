@@ -201,6 +201,103 @@ class UsageRepositoryTest {
         assertNotNull(dailyUsageDao.getUsage("com.test.app", recentDate))
         assertEquals(0, blockEventDao.events.count { it.usageDate == oldDate })
     }
+
+    @Test
+    fun testCategoryLimitSaveAndEnforcement() = runTest {
+        appInfoDao.insertOrIgnore(AppInfo("com.instagram.android", "Instagram", "Social Media"))
+        val today = UsageDayCalculator.getTodayUsageDate()
+
+        // 1. Save 60 min limit for Social Media
+        repository.saveCategoryLimit(
+            UsageRepository.CategoryLimitSetting(
+                category = "Social Media",
+                dailyLimitMinutes = 60,
+                blockingStyle = "STRICT",
+                snoozeMinutes = 5,
+                isEnabled = true
+            )
+        )
+
+        val retrieved = repository.getCategoryLimit("Social Media")
+        assertNotNull(retrieved)
+        assertEquals(60, retrieved!!.dailyLimitMinutes)
+
+        // 2. Usage at 45m -> not blocked
+        dailyUsageDao.insertOrUpdate(DailyUsage("com.instagram.android", today, 45, 1000L))
+        val result1 = repository.checkAppLimit("com.instagram.android")
+        assertNotNull(result1)
+        assertFalse(result1!!.shouldBlock)
+        assertEquals(15, result1.remainingMinutes)
+
+        // 3. Usage reaches 60m -> blocked
+        dailyUsageDao.insertOrUpdate(DailyUsage("com.instagram.android", today, 60, 2000L))
+        val result2 = repository.checkAppLimit("com.instagram.android")
+        assertNotNull(result2)
+        assertTrue(result2!!.shouldBlock)
+        assertEquals(0, result2.remainingMinutes)
+
+        // 4. Delete category limit -> checkAppLimit returns null
+        repository.deleteCategoryLimit("Social Media")
+        val result3 = repository.checkAppLimit("com.instagram.android")
+        assertNull(result3)
+    }
+
+    @Test
+    fun testExportAndImportData() = runTest {
+        val today = UsageDayCalculator.getTodayUsageDate()
+        appInfoDao.insertOrIgnore(AppInfo("com.test.app", "Test App", "Browser"))
+        dailyUsageDao.insertOrUpdate(DailyUsage("com.test.app", today, 35, 1000L))
+        appLimitSettingsDao.upsert(AppLimitSettings("com.test.app", 60, "STRICT", 5, true))
+
+        // Export data
+        val json = repository.exportAllDataAsJson()
+        assertTrue(json.contains("com.test.app"))
+        assertTrue(json.contains("Test App"))
+
+        // Clear tables
+        appInfoDao.apps.clear()
+        dailyUsageDao.usages.clear()
+        appLimitSettingsDao.settings.clear()
+
+        assertEquals(0, appInfoDao.apps.size)
+        assertEquals(0, dailyUsageDao.usages.size)
+
+        // Import data back
+        val importResult = repository.importDataFromJson(json)
+        assertTrue(importResult.isSuccess)
+
+        // Verify restoration
+        assertEquals(1, appInfoDao.apps.size)
+        assertEquals("Test App", appInfoDao.getApp("com.test.app")?.appName)
+        assertEquals(35L, dailyUsageDao.getUsage("com.test.app", today)?.durationMinutes)
+        assertEquals(60, appLimitSettingsDao.getSettings("com.test.app")?.dailyLimitMinutes)
+    }
+
+    @Test
+    fun testTrendsInsightsPersonaZenMonk() = runTest {
+        val dates = UsageDayCalculator.getRecentUsageDates(7)
+        for (d in dates) {
+            dailyUsageDao.insertOrUpdate(DailyUsage("com.test.zen", d, 60, 1000L))
+        }
+        val persona = repository.getTrendsInsights(dates)
+        assertEquals("Zen Monk", persona.title)
+        assertEquals("🧘", persona.emoji)
+        assertEquals(60L, persona.dailyAverageMinutes)
+        assertTrue(persona.touchGrassRatioPercent >= 90)
+    }
+
+    @Test
+    fun testTrendsInsightsPersonaSocialButterfly() = runTest {
+        val dates = UsageDayCalculator.getRecentUsageDates(7)
+        appInfoDao.insertOrIgnore(AppInfo("com.whatsapp", "WhatsApp", "Social Media"))
+        for (d in dates) {
+            dailyUsageDao.insertOrUpdate(DailyUsage("com.whatsapp", d, 250, 1000L))
+        }
+        val persona = repository.getTrendsInsights(dates)
+        assertEquals("Social Butterfly", persona.title)
+        assertEquals("💬", persona.emoji)
+        assertEquals(250L, persona.dailyAverageMinutes)
+    }
 }
 
 // -------------------------------------------------------------
@@ -293,6 +390,14 @@ class FakeDailyUsageDao : DailyUsageDao {
         keysToRemove.forEach { usages.remove(it) }
         return keysToRemove.size
     }
+
+    override suspend fun insertAll(usages: List<DailyUsage>) {
+        usages.forEach { insertOrUpdate(it) }
+    }
+
+    override suspend fun getRowCount(): Int = usages.size
+
+    override suspend fun getAllStatic(): List<DailyUsage> = usages.values.toList()
 }
 
 class FakeAppLimitSettingsDao : AppLimitSettingsDao {
@@ -308,6 +413,7 @@ class FakeAppLimitSettingsDao : AppLimitSettingsDao {
         flowOf(settings.values.filter { it.isEnabled })
     override suspend fun getAllActiveSettingsStatic(): List<AppLimitSettings> =
         settings.values.filter { it.isEnabled }
+    override suspend fun getAllStatic(): List<AppLimitSettings> = settings.values.toList()
     override suspend fun delete(packageName: String) { settings.remove(packageName) }
 }
 
@@ -374,6 +480,12 @@ class FakeBlockEventDao : BlockEventDao {
         events.removeAll { it.usageDate < cutoffDate }
         return count
     }
+
+    override suspend fun getBlockedEventCountForDate(usageDate: String): Int {
+        return events.count { it.usageDate == usageDate && it.eventType == "BLOCKED" }
+    }
+
+    override suspend fun getAllStatic(): List<BlockEvent> = events.toList()
 }
 
 class FakeAppConfigDao : AppConfigDao {

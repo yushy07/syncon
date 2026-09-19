@@ -1,5 +1,7 @@
 package com.yu.syncon.ui.settings
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -57,7 +59,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.yu.syncon.R
+import com.yu.syncon.SyncOnApp
+import com.yu.syncon.data.repository.UsageRepository
 import com.yu.syncon.service.worker.DailyResetWorker
+import com.yu.syncon.util.UsageDayCalculator
 import com.yu.syncon.ui.components.OutlinedPillButton
 import com.yu.syncon.ui.components.PrimaryPillButton
 import com.yu.syncon.ui.components.SecondaryPillButton
@@ -92,7 +97,8 @@ enum class SettingsSubScreen {
 fun SettingsScreen(
     hasUsageAccess: Boolean,
     isAccessibilityEnabled: Boolean,
-    isBatteryOptimizationIgnored: Boolean
+    isBatteryOptimizationIgnored: Boolean,
+    repository: UsageRepository? = null
 ) {
     var subScreen by remember { mutableStateOf(SettingsSubScreen.HOME) }
 
@@ -106,6 +112,7 @@ fun SettingsScreen(
                 hasUsageAccess = hasUsageAccess,
                 isAccessibilityEnabled = isAccessibilityEnabled,
                 isBatteryOptimizationIgnored = isBatteryOptimizationIgnored,
+                repository = repository,
                 onNavigate = { subScreen = it }
             )
             SettingsSubScreen.PERMISSION_HEALTH -> Screen33PermissionHealth(
@@ -142,12 +149,56 @@ private fun Screen32SettingsHome(
     hasUsageAccess: Boolean,
     isAccessibilityEnabled: Boolean,
     isBatteryOptimizationIgnored: Boolean,
+    repository: UsageRepository?,
     onNavigate: (SettingsSubScreen) -> Unit
 ) {
     val context = LocalContext.current
+    val repo = repository ?: (context.applicationContext as? SyncOnApp)?.repository ?: remember { UsageRepository(context) }
     val scope = rememberCoroutineScope()
     var resetFeedbackMessage by remember { mutableStateOf<String?>(null) }
+    var exportFeedbackMessage by remember { mutableStateOf<String?>(null) }
+    var importFeedbackMessage by remember { mutableStateOf<String?>(null) }
     val allPermissionsGranted = hasUsageAccess && isAccessibilityEnabled && isBatteryOptimizationIgnored
+
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    val json = repo.exportAllDataAsJson()
+                    context.contentResolver.openOutputStream(uri)?.use { stream ->
+                        stream.write(json.toByteArray(Charsets.UTF_8))
+                    }
+                    exportFeedbackMessage = "Data exported successfully!"
+                } catch (e: Exception) {
+                    exportFeedbackMessage = "Export failed: ${e.message}"
+                }
+            }
+        }
+    }
+
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    val json = context.contentResolver.openInputStream(uri)?.use { stream ->
+                        stream.bufferedReader(Charsets.UTF_8).readText()
+                    } ?: throw Exception("Unable to open selected file")
+                    val result = repo.importDataFromJson(json)
+                    if (result.isSuccess) {
+                        importFeedbackMessage = result.getOrNull() ?: "Data imported successfully!"
+                    } else {
+                        importFeedbackMessage = "Import failed: ${result.exceptionOrNull()?.message}"
+                    }
+                } catch (e: Exception) {
+                    importFeedbackMessage = "Import failed: ${e.message}"
+                }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -187,11 +238,52 @@ private fun Screen32SettingsHome(
                     onClick = { onNavigate(SettingsSubScreen.DATA_RETENTION) }
                 )
                 SettingsClickableRow(
+                    title = "Export Data",
+                    subtitle = "Backup history to local JSON file",
+                    onClick = {
+                        val today = UsageDayCalculator.getTodayUsageDate()
+                        exportLauncher.launch("syncon_backup_$today.json")
+                    }
+                )
+                SettingsClickableRow(
+                    title = "Import Data",
+                    subtitle = "Restore history and limits from JSON backup",
+                    onClick = {
+                        importLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                    }
+                )
+                SettingsClickableRow(
                     title = "About",
                     subtitle = "Version 1.0.0",
                     onClick = { onNavigate(SettingsSubScreen.ABOUT) }
                 )
             }
+        }
+
+        exportFeedbackMessage?.let { msg ->
+            Text(
+                text = if (msg.startsWith("Export failed")) "✗ $msg" else "✓ $msg",
+                color = if (msg.startsWith("Export failed")) AccentCoral else AccentSage,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
+            )
+        }
+
+        importFeedbackMessage?.let { msg ->
+            Text(
+                text = if (msg.startsWith("Import failed")) "✗ $msg" else "✓ $msg",
+                color = if (msg.startsWith("Import failed")) AccentCoral else AccentSage,
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
+            )
         }
 
         // Dedicated QA / Debug Controls Section
@@ -322,42 +414,74 @@ private fun Screen33PermissionHealth(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Xiaomi / Android 13+ Restricted Setting Notice
+            // OEM Background Optimization Guide (especially Xiaomi / HyperOS / Samsung)
             Card(
                 shape = CardShape,
                 colors = CardDefaults.cardColors(containerColor = AccentAmberLight),
                 border = BorderStroke(1.dp, AccentAmber.copy(alpha = 0.4f)),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Warning,
                             contentDescription = null,
                             tint = AccentAmber,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Xiaomi / POCO / HyperOS Tip",
+                            text = if (PermissionUtils.isXiaomiDevice()) "Xiaomi / HyperOS Background Setup" else "OEM Battery Optimization",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
                         )
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "If Accessibility is disabled with \"Restricted setting\":\n1. Tap 'Open App Info' below\n2. Tap ⋮ (3 dots) in top-right corner\n3. Tap 'Allow restricted settings'\n4. Return here to enable Accessibility",
+                        text = "Aggressive OS battery savers can stop tracking services in the background. For uninterrupted tracking and prompt limit enforcement:",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextPrimary
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    SecondaryPillButton(
-                        text = "Open App Info (Allow Restricted)",
-                        onClick = {
-                            context.startActivity(PermissionUtils.getAppDetailsIntent(context))
-                        }
-                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (PermissionUtils.isXiaomiDevice()) {
+                        OutlinedPillButton(
+                            text = "1. Enable Autostart in Security",
+                            onClick = {
+                                try {
+                                    context.startActivity(PermissionUtils.getXiaomiAutostartIntent(context))
+                                } catch (_: Exception) {
+                                    context.startActivity(PermissionUtils.getAppDetailsIntent(context))
+                                }
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedPillButton(
+                            text = "2. Set Battery Saver to 'No Restrictions'",
+                            onClick = {
+                                try {
+                                    context.startActivity(PermissionUtils.getXiaomiBatterySaverIntent(context))
+                                } catch (_: Exception) {
+                                    context.startActivity(PermissionUtils.getBatteryOptimizationIntent(context))
+                                }
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        SecondaryPillButton(
+                            text = "3. Allow Restricted Settings (If Disabled)",
+                            onClick = {
+                                context.startActivity(PermissionUtils.getAppDetailsIntent(context))
+                            }
+                        )
+                    } else {
+                        SecondaryPillButton(
+                            text = "Configure Battery Optimization",
+                            onClick = {
+                                context.startActivity(PermissionUtils.getBatteryOptimizationIntent(context))
+                            }
+                        )
+                    }
                 }
             }
 

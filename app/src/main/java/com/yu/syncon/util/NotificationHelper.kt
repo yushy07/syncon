@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.yu.syncon.R
@@ -16,6 +17,7 @@ object NotificationHelper {
     const val CHANNEL_TRACKING_ID = "syncon_tracking_service"
     const val CHANNEL_WARNING_ID = "syncon_limit_warnings"
     const val TRACKING_NOTIFICATION_ID = 1001
+    const val LIVE_REMAINING_NOTIFICATION_ID = 1002
 
     fun createNotificationChannels(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
@@ -91,5 +93,50 @@ object NotificationHelper {
         } catch (_: SecurityException) {
             // Permission revoked mid-operation
         }
+    }
+
+    fun updateLiveRemainingNotification(context: Context, appName: String, remainingMinutes: Int) {
+        if (!PermissionUtils.hasNotificationPermission(context)) return
+
+        val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            LIVE_REMAINING_NOTIFICATION_ID,
+            openAppIntent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        val text = if (remainingMinutes == 1) {
+            "1 minute left today"
+        } else {
+            "$remainingMinutes minutes left today"
+        }
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_TRACKING_ID)
+            .setSmallIcon(R.drawable.ic_stat_syncon)
+            .setContentTitle(appName)
+            .setContentText(text)
+            .setSubText("SyncOn")
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setContentIntent(pendingIntent)
+            .build()
+
+        try {
+            Log.i("NotificationHelper", "updateLiveRemainingNotification: app=$appName, remaining=$remainingMinutes mins")
+            NotificationManagerCompat.from(context).notify(LIVE_REMAINING_NOTIFICATION_ID, notification)
+        } catch (_: SecurityException) {
+            // Permission revoked mid-operation
+        }
+    }
+
+    fun cancelLiveRemainingNotification(context: Context) {
+        try {
+            Log.i("NotificationHelper", "cancelLiveRemainingNotification")
+            NotificationManagerCompat.from(context).cancel(LIVE_REMAINING_NOTIFICATION_ID)
+        } catch (_: Exception) {}
     }
 }

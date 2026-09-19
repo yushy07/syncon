@@ -25,6 +25,9 @@ interface AppLimitSettingsDao {
     @Query("SELECT * FROM app_limit_settings WHERE isEnabled = 1")
     suspend fun getAllActiveSettingsStatic(): List<AppLimitSettings>
 
+    @Query("SELECT * FROM app_limit_settings")
+    suspend fun getAllStatic(): List<AppLimitSettings>
+
     @Query("DELETE FROM app_limit_settings WHERE packageName = :packageName")
     suspend fun delete(packageName: String)
 }

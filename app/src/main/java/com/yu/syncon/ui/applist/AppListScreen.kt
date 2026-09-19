@@ -54,11 +54,32 @@ import com.yu.syncon.ui.theme.TextPrimary
 import com.yu.syncon.ui.theme.TextSecondary
 import com.yu.syncon.util.CategoryMapper
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.yu.syncon.ui.theme.AccentCoral
+import com.yu.syncon.ui.theme.AccentCoralLight
+
+enum class AppStatusFilter(val label: String) {
+    ALL("All"),
+    LIMITED("Limited"),
+    APPROACHING("Approaching"),
+    BLOCKED("Blocked")
+}
+
+enum class AppSortOrder(val label: String) {
+    MOST_USED("Most used"),
+    ALPHABETICAL("A–Z"),
+    LIMIT("By limit")
+}
+
 @Composable
 fun AppListScreen(
     repository: UsageRepository,
     onAppClick: (String) -> Unit
 ) {
+    val haptic = LocalHapticFeedback.current
+
     LaunchedEffect(Unit) {
         repository.syncInstalledApps()
     }
@@ -72,19 +93,42 @@ fun AppListScreen(
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedCategoryFilter by remember { mutableStateOf("All") }
+    var selectedStatusFilter by remember { mutableStateOf(AppStatusFilter.ALL) }
+    var selectedSortOrder by remember { mutableStateOf(AppSortOrder.MOST_USED) }
 
     val categories = listOf("All") + CategoryMapper.ALL_CATEGORIES
 
-    val filteredApps = remember(allApps, searchQuery, selectedCategoryFilter, usageMap) {
+    val filteredApps = remember(allApps, searchQuery, selectedCategoryFilter, selectedStatusFilter, selectedSortOrder, usageMap, limitsMap) {
         allApps.filter { app ->
             val matchesCategory = selectedCategoryFilter == "All" || app.category == selectedCategoryFilter
             val matchesSearch = searchQuery.isBlank() || app.appName.contains(searchQuery, ignoreCase = true) ||
                     app.packageName.contains(searchQuery, ignoreCase = true)
-            matchesCategory && matchesSearch
-        }.sortedWith(
-            compareByDescending<com.yu.syncon.data.local.entity.AppInfo> { usageMap[it.packageName] ?: 0L }
-                .thenBy { it.appName.lowercase() }
-        )
+
+            val limit = limitsMap[app.packageName]
+            val used = usageMap[app.packageName] ?: 0L
+            val matchesStatus = when (selectedStatusFilter) {
+                AppStatusFilter.ALL -> true
+                AppStatusFilter.LIMITED -> limit != null && limit > 0
+                AppStatusFilter.APPROACHING -> limit != null && limit > 0 && used >= (limit * 0.8f) && used < limit
+                AppStatusFilter.BLOCKED -> limit != null && limit > 0 && used >= limit
+            }
+
+            matchesCategory && matchesSearch && matchesStatus
+        }.sortedWith { a, b ->
+            when (selectedSortOrder) {
+                AppSortOrder.MOST_USED -> {
+                    val usedA = usageMap[a.packageName] ?: 0L
+                    val usedB = usageMap[b.packageName] ?: 0L
+                    if (usedA != usedB) usedB.compareTo(usedA) else a.appName.compareTo(b.appName, ignoreCase = true)
+                }
+                AppSortOrder.ALPHABETICAL -> a.appName.compareTo(b.appName, ignoreCase = true)
+                AppSortOrder.LIMIT -> {
+                    val limA = limitsMap[a.packageName] ?: Int.MAX_VALUE
+                    val limB = limitsMap[b.packageName] ?: Int.MAX_VALUE
+                    if (limA != limB) limA.compareTo(limB) else a.appName.compareTo(b.appName, ignoreCase = true)
+                }
+            }
+        }
     }
 
     Column(
@@ -157,7 +201,68 @@ fun AppListScreen(
                 .padding(horizontal = 20.dp)
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Status Filter Chips: All | Limited | Approaching | Blocked
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            AppStatusFilter.entries.forEach { filter ->
+                val isSelected = selectedStatusFilter == filter
+                val chipColor = when {
+                    isSelected && (filter == AppStatusFilter.APPROACHING || filter == AppStatusFilter.BLOCKED) -> AccentCoral
+                    isSelected -> PrimaryIndigo
+                    else -> CardSurface
+                }
+                val textColor = if (isSelected) Color.White else TextPrimary
+
+                Box(
+                    modifier = Modifier
+                        .clip(FilterChipShape)
+                        .background(chipColor)
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            selectedStatusFilter = filter
+                        }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = filter.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = textColor
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            // Sort toggle chip
+            Box(
+                modifier = Modifier
+                    .clip(FilterChipShape)
+                    .background(CardSurfaceVariant)
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        val nextIdx = (selectedSortOrder.ordinal + 1) % AppSortOrder.entries.size
+                        selectedSortOrder = AppSortOrder.entries[nextIdx]
+                    }
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = "Sort: ${selectedSortOrder.label}",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Medium,
+                    color = PrimaryIndigo
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         // Horizontal Category Filter Chips
         Row(
@@ -173,17 +278,17 @@ fun AppListScreen(
                     modifier = Modifier
                         .clip(FilterChipShape)
                         .background(if (isSelected) PrimaryIndigo else CardSurface)
-                        .then(
-                            if (!isSelected) Modifier.background(CardSurface) else Modifier
-                        )
-                        .clickable { selectedCategoryFilter = cat }
-                        .padding(horizontal = 14.dp, vertical = 7.dp)
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            selectedCategoryFilter = cat
+                        }
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
                         text = cat,
-                        style = MaterialTheme.typography.labelMedium,
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
-                        color = if (isSelected) Color.White else TextPrimary
+                        color = if (isSelected) Color.White else TextSecondary
                     )
                 }
             }

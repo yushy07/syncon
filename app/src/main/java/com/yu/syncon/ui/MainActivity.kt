@@ -260,7 +260,8 @@ fun MainAppContent(
                 SettingsScreen(
                     hasUsageAccess = hasUsageAccess,
                     isAccessibilityEnabled = isAccessibilityEnabled,
-                    isBatteryOptimizationIgnored = isBatteryOptimizationIgnored
+                    isBatteryOptimizationIgnored = isBatteryOptimizationIgnored,
+                    repository = repository
                 )
             }
             composable(Screen.TrackingStatus.route) {

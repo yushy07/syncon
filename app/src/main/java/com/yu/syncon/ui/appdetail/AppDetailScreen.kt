@@ -48,6 +48,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -101,11 +103,16 @@ fun AppDetailScreen(
     var showBlockingStyleSheet by remember { mutableStateOf(false) }
     var showCategorySheet by remember { mutableStateOf(false) }
 
-    // App trend mini bars
+    // App trend mini bars & launch count
     var appMiniBars by remember { mutableStateOf<List<MiniBarItem>>(emptyList()) }
+    var appLaunchCount by remember { mutableIntStateOf(0) }
+    var categoryLimitSetting by remember { mutableStateOf<UsageRepository.CategoryLimitSetting?>(null) }
 
     LaunchedEffect(packageName, todayUsage) {
         appInfo = repository.getAppInfo(packageName)
+        val launchCounts = repository.getTodayAppLaunchCounts()
+        appLaunchCount = launchCounts[packageName] ?: 0
+
         val recentDates = UsageDayCalculator.getRecentUsageDates(7)
         val todayStr = UsageDayCalculator.getTodayUsageDate()
 
@@ -123,6 +130,13 @@ fun AppDetailScreen(
             )
         }
         appMiniBars = items
+    }
+
+    LaunchedEffect(appInfo?.category) {
+        val cat = appInfo?.category
+        if (cat != null) {
+            categoryLimitSetting = repository.getCategoryLimit(cat)
+        }
     }
 
     val categoryColor = getCategoryColor(appInfo?.category ?: "Other")
@@ -226,12 +240,27 @@ fun AppDetailScreen(
                         color = TextSecondary
                     )
                     Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = timeStr,
-                        style = MaterialTheme.typography.displayMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = timeStr,
+                            style = MaterialTheme.typography.displayMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        if (appLaunchCount > 0) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "• $appLaunchCount opens",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextSecondary,
+                                modifier = Modifier.padding(bottom = 6.dp)
+                            )
+                        }
+                    }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -277,6 +306,21 @@ fun AppDetailScreen(
                         value = appInfo?.category ?: "Other",
                         onClick = { showCategorySheet = true }
                     )
+
+                    // Row 4: Category budget (if active for this category)
+                    categoryLimitSetting?.let { catSet ->
+                        if (catSet.isEnabled) {
+                            val catLimitMinutes = catSet.dailyLimitMinutes
+                            val catHours = catLimitMinutes / 60
+                            val catMins = catLimitMinutes % 60
+                            val catStr = if (catHours > 0) "${catHours}h ${catMins}m" else "${catMins}m"
+                            ClickableSettingRow(
+                                label = "Category budget (${appInfo?.category})",
+                                value = "$catStr daily (${catSet.blockingStyle.lowercase().replaceFirstChar { it.uppercase() }})",
+                                onClick = { }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -373,19 +417,23 @@ fun AppDetailScreen(
                 }
 
                 if (!selectedNoLimit) {
+                    val haptic = LocalHapticFeedback.current
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Preset chips: 15m, 30m, 45m, 60m, 90m, 120m
-                    val presets = listOf(15, 30, 45, 60, 90, 120)
+                    // Preset chips: 15m, 30m, 45m, 1h, 1h 30m, 2h, 3h
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        presets.take(3).forEach { m ->
+                        listOf(15, 30, 45, 60).forEach { m ->
+                            val label = if (m < 60) "${m}m" else "1h"
                             PresetChip(
-                                label = "${m}m",
+                                label = label,
                                 isSelected = currentMinutes == m,
-                                onClick = { currentMinutes = m },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    currentMinutes = m
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -395,12 +443,20 @@ fun AppDetailScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        presets.drop(3).forEach { m ->
-                            val label = if (m % 60 == 0) "${m / 60}h" else "${m / 60}h ${m % 60}m"
+                        listOf(90, 120, 180).forEach { m ->
+                            val label = when (m) {
+                                90 -> "1h 30m"
+                                120 -> "2h"
+                                180 -> "3h"
+                                else -> "${m}m"
+                            }
                             PresetChip(
                                 label = label,
                                 isSelected = currentMinutes == m,
-                                onClick = { currentMinutes = m },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    currentMinutes = m
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                         }

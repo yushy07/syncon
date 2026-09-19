@@ -87,7 +87,7 @@ class BlockedActivity : ComponentActivity() {
 
         val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME) ?: ""
         val appName = intent.getStringExtra(EXTRA_APP_NAME) ?: "This app"
-        val blockingStyle = intent.getStringExtra(EXTRA_BLOCKING_STYLE) ?: "STRICT"
+        val blockingStyle = intent.getStringExtra(EXTRA_BLOCKING_STYLE)?.uppercase() ?: "STRICT"
         val snoozeMinutes = intent.getIntExtra(EXTRA_SNOOZE_MINUTES, 5)
         val limitMinutes = intent.getIntExtra(EXTRA_LIMIT_MINUTES, 60)
 

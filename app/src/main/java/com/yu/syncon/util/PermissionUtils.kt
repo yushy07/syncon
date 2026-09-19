@@ -134,4 +134,57 @@ object PermissionUtils {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
     }
+
+    /**
+     * Checks if the current device is manufactured by Xiaomi (HyperOS / MIUI / Redmi / POCO).
+     */
+    fun isXiaomiDevice(): Boolean {
+        val man = Build.MANUFACTURER.lowercase()
+        val brand = Build.BRAND.lowercase()
+        return man.contains("xiaomi") || brand.contains("xiaomi") ||
+               brand.contains("redmi") || brand.contains("poco")
+    }
+
+    /**
+     * Checks if the current device is Samsung.
+     */
+    fun isSamsungDevice(): Boolean {
+        return Build.MANUFACTURER.lowercase().contains("samsung")
+    }
+
+    /**
+     * Attempts to resolve Xiaomi / HyperOS Autostart settings intent.
+     */
+    fun getXiaomiAutostartIntent(context: Context): Intent {
+        return try {
+            Intent().apply {
+                component = android.content.ComponentName(
+                    "com.miui.securitycenter",
+                    "com.miui.permcenter.autostart.AutoStartManagementActivity"
+                )
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+        } catch (_: Exception) {
+            getAppDetailsIntent(context)
+        }
+    }
+
+    /**
+     * Attempts to resolve Xiaomi / HyperOS Battery Saver (No restrictions) intent.
+     */
+    fun getXiaomiBatterySaverIntent(context: Context): Intent {
+        return try {
+            Intent().apply {
+                component = android.content.ComponentName(
+                    "com.miui.powerkeeper",
+                    "com.miui.powerkeeper.ui.HiddenAppsConfigActivity"
+                )
+                putExtra("package_name", context.packageName)
+                putExtra("package_label", "SyncOn")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+        } catch (_: Exception) {
+            getBatteryOptimizationIntent(context)
+        }
+    }
 }
