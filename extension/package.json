@@ -1,0 +1,10 @@
+{
+  "name": "syncon-chrome-extension",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local-first Chrome screen-time tracker for SyncOn",
+  "scripts": {
+    "test": "node --test tests/*.test.js",
+    "check": "node --check background.js"
+  }
+}
