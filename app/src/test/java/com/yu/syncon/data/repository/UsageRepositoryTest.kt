@@ -6,6 +6,7 @@ import com.yu.syncon.data.local.dao.AppInfoDao
 import com.yu.syncon.data.local.dao.AppLimitSettingsDao
 import com.yu.syncon.data.local.dao.BlockEventDao
 import com.yu.syncon.data.local.dao.DailyUsageDao
+import com.yu.syncon.data.local.dao.UsageIntervalDao
 import com.yu.syncon.data.local.dao.DateUsageTotal
 import com.yu.syncon.data.local.dao.AppUsageTotal
 import com.yu.syncon.data.local.entity.AppConfig
@@ -14,6 +15,7 @@ import com.yu.syncon.data.local.entity.AppInfo
 import com.yu.syncon.data.local.entity.AppLimitSettings
 import com.yu.syncon.data.local.entity.BlockEvent
 import com.yu.syncon.data.local.entity.DailyUsage
+import com.yu.syncon.data.local.entity.UsageInterval
 import com.yu.syncon.util.UsageDayCalculator
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -38,6 +40,7 @@ class UsageRepositoryTest {
     private lateinit var appDailyStateDao: FakeAppDailyStateDao
     private lateinit var blockEventDao: FakeBlockEventDao
     private lateinit var appConfigDao: FakeAppConfigDao
+    private lateinit var usageIntervalDao: FakeUsageIntervalDao
 
     private lateinit var repository: UsageRepository
     private var nowMs: Long = 1_000_000L
@@ -50,6 +53,7 @@ class UsageRepositoryTest {
         appDailyStateDao = FakeAppDailyStateDao()
         blockEventDao = FakeBlockEventDao()
         appConfigDao = FakeAppConfigDao()
+        usageIntervalDao = FakeUsageIntervalDao()
 
         // Insert a test app
         appInfoDao.apps["com.test.app"] = AppInfo("com.test.app", "Test App", "Social Media")
@@ -61,6 +65,7 @@ class UsageRepositoryTest {
             appDailyStateDao = appDailyStateDao,
             blockEventDao = blockEventDao,
             appConfigDao = appConfigDao,
+            usageIntervalDao = usageIntervalDao,
             currentTimeMillis = { nowMs }
         )
     }
@@ -566,4 +571,42 @@ class FakeAppConfigDao : AppConfigDao {
 
     override suspend fun get(key: String): String? = config[key]
     override suspend fun delete(key: String) { config.remove(key) }
+}
+
+class FakeUsageIntervalDao : UsageIntervalDao {
+    val intervals = linkedMapOf<String, UsageInterval>()
+
+    override suspend fun insertAll(intervals: List<UsageInterval>): List<Long> = intervals.map { interval ->
+        if (this.intervals.putIfAbsent(interval.recordId, interval) == null) 1L else -1L
+    }
+
+    override suspend fun getPending(limit: Int): List<UsageInterval> = intervals.values
+        .filter { it.syncState in setOf("LOCAL_ONLY", "PENDING_UPLOAD", "SYNC_FAILED") && !it.isDeleted }
+        .sortedBy { it.startTimeUtc }
+        .take(limit)
+
+    override suspend fun getAllStatic(): List<UsageInterval> = intervals.values.sortedBy { it.startTimeUtc }
+
+    override suspend fun updateSyncState(
+        recordIds: List<String>,
+        syncState: String,
+        serverRevision: Long?,
+        updatedAtUtc: Long
+    ) {
+        recordIds.forEach { id ->
+            intervals[id]?.let { interval ->
+                intervals[id] = interval.copy(
+                    syncState = syncState,
+                    serverRevision = serverRevision,
+                    updatedAtUtc = updatedAtUtc
+                )
+            }
+        }
+    }
+
+    override suspend fun deleteOlderThan(cutoffDate: String): Int {
+        val ids = intervals.values.filter { it.usageDate < cutoffDate }.map { it.recordId }
+        ids.forEach(intervals::remove)
+        return ids.size
+    }
 }

@@ -12,12 +12,14 @@ import com.yu.syncon.data.local.dao.AppInfoDao
 import com.yu.syncon.data.local.dao.AppLimitSettingsDao
 import com.yu.syncon.data.local.dao.BlockEventDao
 import com.yu.syncon.data.local.dao.DailyUsageDao
+import com.yu.syncon.data.local.dao.UsageIntervalDao
 import com.yu.syncon.data.local.entity.AppConfig
 import com.yu.syncon.data.local.entity.AppDailyState
 import com.yu.syncon.data.local.entity.AppInfo
 import com.yu.syncon.data.local.entity.AppLimitSettings
 import com.yu.syncon.data.local.entity.BlockEvent
 import com.yu.syncon.data.local.entity.DailyUsage
+import com.yu.syncon.data.local.entity.UsageInterval
 
 @Database(
     entities = [
@@ -26,9 +28,10 @@ import com.yu.syncon.data.local.entity.DailyUsage
         AppLimitSettings::class,
         AppDailyState::class,
         BlockEvent::class,
-        AppConfig::class
+        AppConfig::class,
+        UsageInterval::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -39,6 +42,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun appDailyStateDao(): AppDailyStateDao
     abstract fun blockEventDao(): BlockEventDao
     abstract fun appConfigDao(): AppConfigDao
+    abstract fun usageIntervalDao(): UsageIntervalDao
 
     companion object {
         @Volatile
@@ -55,6 +59,35 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """CREATE TABLE IF NOT EXISTS usage_interval (
+                        recordId TEXT NOT NULL PRIMARY KEY,
+                        installationId TEXT NOT NULL,
+                        sourcePlatform TEXT NOT NULL,
+                        sourceType TEXT NOT NULL,
+                        sourceIdentifier TEXT NOT NULL,
+                        usageDate TEXT NOT NULL,
+                        startTimeUtc INTEGER NOT NULL,
+                        endTimeUtc INTEGER NOT NULL,
+                        durationMillis INTEGER NOT NULL,
+                        timezoneId TEXT NOT NULL,
+                        utcOffsetMinutes INTEGER NOT NULL,
+                        createdAtUtc INTEGER NOT NULL,
+                        updatedAtUtc INTEGER NOT NULL,
+                        localRevision INTEGER NOT NULL,
+                        serverRevision INTEGER,
+                        syncState TEXT NOT NULL,
+                        isDeleted INTEGER NOT NULL
+                    )""".trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_usage_interval_usageDate ON usage_interval(usageDate)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_usage_interval_syncState ON usage_interval(syncState)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_usage_interval_installationId_startTimeUtc_endTimeUtc ON usage_interval(installationId, startTimeUtc, endTimeUtc)")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -63,6 +96,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "syncon.db"
                 )
                 .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_2_3)
                 // Safety policy: if sideloading an older build, avoid crash on schema downgrade
                 .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                 // For future schema version upgrades (e.g. 1 -> 2), add .addMigrations(MIGRATION_1_2) here

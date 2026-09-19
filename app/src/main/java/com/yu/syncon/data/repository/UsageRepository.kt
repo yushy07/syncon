@@ -13,12 +13,14 @@ import com.yu.syncon.data.local.dao.AppInfoDao
 import com.yu.syncon.data.local.dao.AppLimitSettingsDao
 import com.yu.syncon.data.local.dao.BlockEventDao
 import com.yu.syncon.data.local.dao.DailyUsageDao
+import com.yu.syncon.data.local.dao.UsageIntervalDao
 import com.yu.syncon.data.local.entity.AppConfig
 import com.yu.syncon.data.local.entity.AppDailyState
 import com.yu.syncon.data.local.entity.AppInfo
 import com.yu.syncon.data.local.entity.AppLimitSettings
 import com.yu.syncon.data.local.entity.BlockEvent
 import com.yu.syncon.data.local.entity.DailyUsage
+import com.yu.syncon.data.local.entity.UsageInterval
 import com.yu.syncon.util.CategoryMapper
 import com.yu.syncon.util.UsageDayCalculator
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +31,8 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
@@ -41,6 +45,7 @@ class UsageRepository(
     private val appDailyStateDao: AppDailyStateDao = database?.appDailyStateDao() ?: error("appDailyStateDao required"),
     private val blockEventDao: BlockEventDao = database?.blockEventDao() ?: error("blockEventDao required"),
     private val appConfigDao: AppConfigDao = database?.appConfigDao() ?: error("appConfigDao required"),
+    private val usageIntervalDao: UsageIntervalDao = database?.usageIntervalDao() ?: error("usageIntervalDao required"),
     private val currentTimeMillis: () -> Long = System::currentTimeMillis
 ) {
 
@@ -146,6 +151,8 @@ class UsageRepository(
 
         // Accumulate durations per (packageName, usageDate)
         val durationMap = mutableMapOf<Pair<String, String>, Long>()
+        val intervals = mutableListOf<UsageInterval>()
+        val installationId = getOrCreateInstallationId()
 
         // Carry forward any sessions already open prior to this tick
         val openSessions = mutableMapOf<String, Long>()
@@ -172,7 +179,7 @@ class UsageRepository(
             } else if (isPause) {
                 val resumeTime = openSessions.remove(pkg)
                 if (resumeTime != null && eventTime > resumeTime) {
-                    addIntervalToDurationMap(durationMap, pkg, resumeTime, eventTime)
+                    addIntervalToDurationMap(durationMap, intervals, installationId, pkg, resumeTime, eventTime)
                 }
             }
         }
@@ -180,7 +187,7 @@ class UsageRepository(
         // For any app still in the foreground at endTimeMs
         for ((pkg, resumeTime) in openSessions) {
             if (endTimeMs > resumeTime) {
-                addIntervalToDurationMap(durationMap, pkg, resumeTime, endTimeMs)
+                addIntervalToDurationMap(durationMap, intervals, installationId, pkg, resumeTime, endTimeMs)
             }
         }
 
@@ -201,6 +208,9 @@ class UsageRepository(
                 dailyUsageDao.addUsageMillis(pkg, usageDate, durationMs, now)
             }
         }
+        if (intervals.isNotEmpty()) {
+            usageIntervalDao.insertAll(intervals)
+        }
 
         // Advance last_synced_at
         appConfigDao.set(AppConfig("last_synced_at", endTimeMs.toString()))
@@ -208,13 +218,40 @@ class UsageRepository(
 
     private fun addIntervalToDurationMap(
         durationMap: MutableMap<Pair<String, String>, Long>,
+        intervals: MutableList<UsageInterval>,
+        installationId: String,
         packageName: String,
         startTimeMs: Long,
         endTimeMs: Long
     ) {
-        for ((usageDate, durationMs) in splitDurationByUsageDate(startTimeMs, endTimeMs)) {
+        var cursor = startTimeMs
+        val zoneId = ZoneId.systemDefault()
+        while (cursor < endTimeMs) {
+            val usageDate = UsageDayCalculator.getUsageDate(cursor, zoneId)
+            val (_, usageDayEndMs) = UsageDayCalculator.getUsageDayRange(usageDate, zoneId)
+            val segmentEnd = minOf(endTimeMs, usageDayEndMs)
+            if (segmentEnd <= cursor) break
+
+            val durationMs = segmentEnd - cursor
             val key = Pair(packageName, usageDate)
             durationMap[key] = (durationMap[key] ?: 0L) + durationMs
+
+            val stableKey = "$installationId|$packageName|$cursor|$segmentEnd"
+            val timestamp = currentTimeMillis()
+            intervals += UsageInterval(
+                recordId = UUID.nameUUIDFromBytes(stableKey.toByteArray(Charsets.UTF_8)).toString(),
+                installationId = installationId,
+                sourceIdentifier = packageName,
+                usageDate = usageDate,
+                startTimeUtc = cursor,
+                endTimeUtc = segmentEnd,
+                durationMillis = durationMs,
+                timezoneId = zoneId.id,
+                utcOffsetMinutes = Instant.ofEpochMilli(cursor).atZone(zoneId).offset.totalSeconds / 60,
+                createdAtUtc = timestamp,
+                updatedAtUtc = timestamp
+            )
+            cursor = segmentEnd
         }
     }
 
@@ -559,6 +596,7 @@ class UsageRepository(
 
         dailyUsageDao.deleteOlderThan(cutoffDate)
         blockEventDao.deleteOlderThan(cutoffDate)
+        usageIntervalDao.deleteOlderThan(cutoffDate)
     }
 
     // ---------------------------------------------------------
