@@ -10,6 +10,7 @@ h2 { margin: 0 0 16px; font-size: 17px; }
 .status-chip { padding: 9px 13px; border-radius: 999px; background: #eef6ef; color: #42684b; display: flex; align-items: center; gap: 8px; font-weight: 700; }
 .view { display: none; margin-top: 30px; }
 .view.active { display: block; }
+.scope-bar { width: fit-content; margin-bottom: 16px; }
 .metrics-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
 .metric-card { padding: 22px; display: grid; gap: 12px; min-height: 150px; }
 .metric-card > strong:not(.metric) { font-size: 23px; overflow: hidden; text-overflow: ellipsis; }

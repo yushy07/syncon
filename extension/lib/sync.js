@@ -78,15 +78,21 @@
     try {
       const result = await api.rpc("get_pairing_status_v2", { p_request_id: connection.requestId });
       if (result.status === "CONNECTED") {
-        const connected = await setConnection({ status: "CONNECTED", accountId: result.account_id, connectedAt: Date.now(), secret: null, qrPayload: null, lastError: null });
-        await syncNow();
-        return connected;
+        return setConnection({ status: "CONNECTED", accountId: result.account_id, connectedAt: Date.now(), secret: null, qrPayload: null, lastError: null });
       }
       if (["EXPIRED", "CANCELLED", "NOT_FOUND"].includes(result.status)) return setConnection({ status: result.status });
       return connection;
     } catch (error) {
       return setConnection({ status: "ERROR", lastError: error.message });
     }
+  }
+
+  async function cancelPairing() {
+    const connection = await getConnection();
+    if (connection.requestId && connection.status === "PAIRING") {
+      try { await api.rpc("cancel_pairing_request_v2", { p_request_id: connection.requestId }); } catch (_) { /* Local mode must remain available offline. */ }
+    }
+    return setConnection({ status: "LOCAL_ONLY", requestId: null, secret: null, qrPayload: null, expiresAt: null, lastError: null });
   }
 
   const intervalPayload = item => ({
@@ -155,7 +161,7 @@
   }
 
   async function applyPull(payload) {
-    const stored = await chrome.storage.local.get(["domains", "limits", "categoryLimits", "blockEvents"]);
+    const stored = await chrome.storage.local.get(["installationId", "domains", "limits", "categoryLimits", "blockEvents"]);
     const domains = stored.domains || {};
     const limits = stored.limits || {};
     const categoryLimits = stored.categoryLimits || {};
@@ -189,13 +195,20 @@
         localRevision: Number(item.local_revision), syncState: "SYNCED"
       });
     });
-    await db.putIntervals((payload.intervals || []).map(camelInterval));
+    const intervalRecords = (payload.intervals || []).map(camelInterval);
+    await db.putIntervals(intervalRecords.filter(item => item.sourcePlatform === "CHROME" && item.installationId === stored.installationId));
+    await db.putRemoteIntervals(intervalRecords.filter(item => !(item.sourcePlatform === "CHROME" && item.installationId === stored.installationId)));
     const dailyTotals = {};
     (await db.getAll()).filter(item => !item.isDeleted).forEach(item => {
       dailyTotals[item.usageDate] ||= {};
       dailyTotals[item.usageDate][item.sourceIdentifier] = (dailyTotals[item.usageDate][item.sourceIdentifier] || 0) + item.durationMillis;
     });
-    await chrome.storage.local.set({ domains, limits, categoryLimits, blockEvents, dailyTotals });
+    const remoteDailyTotals = {};
+    (await db.getRemoteAll()).filter(item => !item.isDeleted).forEach(item => {
+      remoteDailyTotals[item.usageDate] ||= {};
+      remoteDailyTotals[item.usageDate][item.sourceIdentifier] = (remoteDailyTotals[item.usageDate][item.sourceIdentifier] || 0) + item.durationMillis;
+    });
+    await chrome.storage.local.set({ domains, limits, categoryLimits, blockEvents, dailyTotals, remoteDailyTotals });
   }
 
   async function pullAll() {
@@ -229,5 +242,5 @@
     }
   }
 
-  root.SyncOnSync = { getConnection, startPairing, pollPairing, syncNow };
+  root.SyncOnSync = { getConnection, startPairing, pollPairing, cancelPairing, syncNow };
 })(typeof globalThis !== "undefined" ? globalThis : this);

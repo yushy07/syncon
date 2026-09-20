@@ -5,6 +5,7 @@ let live = null;
 let trendDays = 7;
 let editingDomain = null;
 let intervalCount = 0;
+let platformScope = "ALL";
 
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
@@ -17,8 +18,23 @@ function toast(message) {
   setTimeout(() => node.classList.remove("show"), 2200);
 }
 
+function totalsForDate(date) {
+  const totals = { ...(appState.dailyTotals[date] || {}) };
+  if (platformScope === "ALL") {
+    Object.entries(appState.remoteDailyTotals?.[date] || {}).forEach(([source, duration]) => {
+      totals[source] = (totals[source] || 0) + duration;
+    });
+  }
+  return totals;
+}
+
 function todayTotals() {
   const totals = { ...(appState.dailyTotals[C.usageDate()] || {}) };
+  if (platformScope === "ALL") {
+    Object.entries(appState.remoteDailyTotals?.[C.usageDate()] || {}).forEach(([source, duration]) => {
+      totals[source] = (totals[source] || 0) + duration;
+    });
+  }
   if (live.active.domain && live.active.startedAt) totals[live.active.domain] = (totals[live.active.domain] || 0) + Date.now() - live.active.startedAt;
   return totals;
 }
@@ -41,6 +57,7 @@ function renderOverview() {
   const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]);
   const total = sorted.reduce((sum, item) => sum + item[1], 0);
   $("#todayTotal").textContent = C.formatDuration(total);
+  $("#todayLabel").textContent = platformScope === "ALL" ? "All devices today" : "Chrome today";
   $("#currentDomain").textContent = live.active.domain || "None";
   $("#currentDuration").textContent = live.active.startedAt ? C.formatDuration(Date.now() - live.active.startedAt) + " in this focus session" : "Waiting for activity";
   $("#topDomain").textContent = sorted[0]?.[0] || "—";
@@ -89,11 +106,11 @@ function renderWebsites() {
 
 function renderTrends() {
   const dates = C.recentUsageDates(trendDays);
-  const totals = dates.map(date => Object.values(appState.dailyTotals[date] || {}).reduce((sum, value) => sum + value, 0));
+  const totals = dates.map(date => Object.values(totalsForDate(date)).reduce((sum, value) => sum + value, 0));
   const max = Math.max(...totals, 1);
   $("#trendChart").innerHTML = dates.map((date, index) => `<div class="bar-wrap" title="${date}: ${C.formatDuration(totals[index])}"><div class="bar" style="height:${Math.max(2, totals[index] / max * 190)}px"></div><small>${new Date(`${date}T12:00:00`).toLocaleDateString(undefined, { weekday: "short" })}</small></div>`).join("");
   const domainTotals = {};
-  dates.forEach(date => Object.entries(appState.dailyTotals[date] || {}).forEach(([domain, duration]) => { domainTotals[domain] = (domainTotals[domain] || 0) + duration; }));
+  dates.forEach(date => Object.entries(totalsForDate(date)).forEach(([domain, duration]) => { domainTotals[domain] = (domainTotals[domain] || 0) + duration; }));
   $("#trendDomains").innerHTML = domainRows(domainTotals, 10);
 }
 
@@ -160,6 +177,13 @@ $$('[data-go]').forEach(button => button.addEventListener("click", () => $(`.nav
 $("#search").addEventListener("input", renderWebsites);
 $("#categoryFilter").addEventListener("change", renderWebsites);
 $$('[data-days]').forEach(button => button.addEventListener("click", () => { $$('[data-days]').forEach(item => item.classList.remove("active")); button.classList.add("active"); trendDays = Number(button.dataset.days); renderTrends(); }));
+$$('[data-platform]').forEach(button => button.addEventListener("click", () => {
+  $$('[data-platform]').forEach(item => item.classList.remove("active"));
+  button.classList.add("active");
+  platformScope = button.dataset.platform;
+  renderOverview();
+  renderTrends();
+}));
 
 $("#saveLimit").addEventListener("click", async event => {
   event.preventDefault();

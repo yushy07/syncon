@@ -1,4 +1,5 @@
 const C = SyncOnCore;
+let selectedScope = "ALL";
 
 function renderDomains(totals, domains) {
   const container = document.querySelector("#domains");
@@ -21,9 +22,17 @@ async function render() {
     chrome.runtime.sendMessage({ type: "GET_CONNECTION" })
   ]);
   const today = C.usageDate();
-  const totals = { ...(live.data.dailyTotals[today] || {}) };
+  const localTotals = { ...(live.data.dailyTotals[today] || {}) };
   if (live.active.domain && live.active.startedAt) {
-    totals[live.active.domain] = (totals[live.active.domain] || 0) + Date.now() - live.active.startedAt;
+    localTotals[live.active.domain] = (localTotals[live.active.domain] || 0) + Date.now() - live.active.startedAt;
+  }
+  const connected = ["CONNECTED", "SYNCING", "OFFLINE"].includes(connection.status);
+  if (!connected) selectedScope = "CHROME";
+  const totals = { ...localTotals };
+  if (connected && selectedScope === "ALL") {
+    Object.entries(live.data.remoteDailyTotals?.[today] || {}).forEach(([source, duration]) => {
+      totals[source] = (totals[source] || 0) + duration;
+    });
   }
   const total = Object.values(totals).reduce((sum, value) => sum + value, 0);
   document.querySelector("#total").textContent = C.formatDuration(total);
@@ -41,6 +50,8 @@ async function render() {
     OFFLINE: "Offline — local tracking continues", REVOKED: "Disconnected", LOCAL_ONLY: "Connect your phone"
   };
   document.querySelector("#connectionDetail").textContent = labels[connection.status] || "Connect your phone";
+  document.querySelector("#scopeToggle").hidden = !connected;
+  document.querySelectorAll("[data-scope]").forEach(button => button.classList.toggle("active", button.dataset.scope === selectedScope));
 }
 
 document.querySelector("#toggle").addEventListener("click", async event => {
@@ -50,4 +61,5 @@ document.querySelector("#toggle").addEventListener("click", async event => {
 });
 document.querySelector("#dashboard").addEventListener("click", () => chrome.runtime.openOptionsPage());
 document.querySelector("#connection").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("onboarding/onboarding.html") }));
+document.querySelectorAll("[data-scope]").forEach(button => button.addEventListener("click", () => { selectedScope = button.dataset.scope; render(); }));
 render();

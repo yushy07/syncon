@@ -9,14 +9,14 @@
 </head>
 <body>
   <aside>
-    <div class="brand"><span class="mark">S</span><span>SyncOn</span></div>
+    <div class="brand"><img class="mark" src="../assets/icon-32.png" alt=""><span>SyncOn</span></div>
     <nav>
       <button class="nav active" data-view="overview">Today</button>
       <button class="nav" data-view="websites">Websites</button>
       <button class="nav" data-view="trends">Trends</button>
       <button class="nav" data-view="settings">Settings</button>
     </nav>
-    <div class="privacy-note"><strong>Local-first</strong><span>No browsing data leaves this browser.</span></div>
+    <div class="privacy-note"><strong>Local-first</strong><span>Tracking continues here when sync is offline.</span></div>
   </aside>
 
   <main>
@@ -26,8 +26,9 @@
     </header>
 
     <section id="overview" class="view active">
+      <div id="platformScope" class="segmented scope-bar"><button data-platform="ALL" class="active">All devices</button><button data-platform="CHROME">Chrome</button></div>
       <div class="metrics-grid">
-        <article class="card metric-card"><span class="muted">Chrome today</span><strong id="todayTotal" class="metric">0m</strong><span class="muted">4 AM – 4 AM</span></article>
+        <article class="card metric-card"><span id="todayLabel" class="muted">All devices today</span><strong id="todayTotal" class="metric">0m</strong><span class="muted">4 AM – 4 AM</span></article>
         <article class="card metric-card"><span class="muted">Current focus</span><strong id="currentDomain">None</strong><span id="currentDuration" class="muted">Waiting for activity</span></article>
         <article class="card metric-card"><span class="muted">Most used</span><strong id="topDomain">—</strong><span id="topDuration" class="muted">No usage yet</span></article>
         <article class="card metric-card"><span class="muted">Clean-day streak</span><strong id="cleanStreak" class="metric">0</strong><span class="muted">days without a block</span></article>

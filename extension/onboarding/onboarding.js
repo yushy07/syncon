@@ -47,6 +47,10 @@ async function load({ forceNew = false } = {}) {
 }
 
 refreshButton.addEventListener("click", () => load({ forceNew: true }));
+document.querySelector("#localOnly").addEventListener("click", async () => {
+  await chrome.runtime.sendMessage({ type: "CANCEL_PAIRING" });
+  await chrome.runtime.openOptionsPage();
+});
 document.querySelector("#dashboard").addEventListener("click", () => chrome.runtime.openOptionsPage());
 timer = setInterval(async () => render(await chrome.runtime.sendMessage({ type: "GET_CONNECTION" })), 2500);
 window.addEventListener("beforeunload", () => clearInterval(timer));

@@ -1,7 +1,8 @@
 (function (root) {
   const DB_NAME = "syncon-extension";
-  const DB_VERSION = 1;
+  const DB_VERSION = 2;
   const STORE = "usage_intervals";
+  const REMOTE_STORE = "remote_usage_intervals";
 
   function open() {
     return new Promise((resolve, reject) => {
@@ -13,6 +14,11 @@
           store.createIndex("usageDate", "usageDate", { unique: false });
           store.createIndex("endTimeUtc", "endTimeUtc", { unique: false });
           store.createIndex("syncState", "syncState", { unique: false });
+        }
+        if (!db.objectStoreNames.contains(REMOTE_STORE)) {
+          const remote = db.createObjectStore(REMOTE_STORE, { keyPath: "recordId" });
+          remote.createIndex("usageDate", "usageDate", { unique: false });
+          remote.createIndex("sourcePlatform", "sourcePlatform", { unique: false });
         }
       };
       request.onsuccess = () => resolve(request.result);
@@ -56,6 +62,19 @@
     });
   }
 
+  async function putRemoteIntervals(intervals) {
+    if (!intervals.length) return;
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(REMOTE_STORE, "readwrite");
+      const store = transaction.objectStore(REMOTE_STORE);
+      intervals.forEach(interval => store.put(interval));
+      transaction.oncomplete = () => { db.close(); resolve(); };
+      transaction.onerror = () => { db.close(); reject(transaction.error); };
+      transaction.onabort = () => { db.close(); reject(transaction.error); };
+    });
+  }
+
   async function getPending(limit = 250) {
     return (await getAll()).filter(item => item.syncState !== "SYNCED").slice(0, limit);
   }
@@ -72,6 +91,17 @@
     return new Promise((resolve, reject) => {
       const transaction = db.transaction(STORE, "readonly");
       const request = transaction.objectStore(STORE).getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+      transaction.oncomplete = () => db.close();
+    });
+  }
+
+  async function getRemoteAll() {
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(REMOTE_STORE, "readonly");
+      const request = transaction.objectStore(REMOTE_STORE).getAll();
       request.onsuccess = () => resolve(request.result || []);
       request.onerror = () => reject(request.error);
       transaction.oncomplete = () => db.close();
@@ -116,5 +146,5 @@
     });
   }
 
-  root.SyncOnDb = { addIntervals, putIntervals, getPending, markSynced, getAll, count, deleteOlderThan, clear };
+  root.SyncOnDb = { addIntervals, putIntervals, putRemoteIntervals, getPending, markSynced, getAll, getRemoteAll, count, deleteOlderThan, clear };
 })(typeof globalThis !== "undefined" ? globalThis : this);

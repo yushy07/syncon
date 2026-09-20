@@ -19,11 +19,12 @@ async function persistActiveSession() {
 
 async function state() {
   const data = await chrome.storage.local.get([
-    "installationId", "settings", "dailyTotals", "domains", "limits", "categoryLimits", "dailyStates", "blockEvents"
+    "installationId", "settings", "dailyTotals", "remoteDailyTotals", "domains", "limits", "categoryLimits", "dailyStates", "blockEvents"
   ]);
   if (!data.installationId) data.installationId = crypto.randomUUID();
   data.settings ||= { trackingEnabled: true, idleThresholdSeconds: 60, excludedDomains: [] };
   data.dailyTotals ||= {};
+  data.remoteDailyTotals ||= {};
   data.domains ||= {};
   data.limits ||= {};
   data.categoryLimits ||= {};
@@ -243,9 +244,10 @@ chrome.alarms.onAlarm.addListener(async alarm => {
   }
   if (new Date().getHours() === 4 && new Date().getMinutes() < 2) await cleanup();
   const connection = await SyncOnSync.getConnection();
-  if (connection.status === "PAIRING") await SyncOnSync.pollPairing();
-  if (["CONNECTED", "SYNCING", "OFFLINE"].includes(connection.status)
-      && (!connection.lastSyncedAt || Date.now() - connection.lastSyncedAt >= 60_000)) {
+  const latestConnection = connection.status === "PAIRING" ? await SyncOnSync.pollPairing() : connection;
+  if (["CONNECTED", "SYNCING", "OFFLINE"].includes(latestConnection.status)
+      && (!latestConnection.lastSyncedAt || Date.now() - latestConnection.lastSyncedAt >= 60_000)) {
+    if (active.domain) await commitActive();
     await SyncOnSync.syncNow();
   }
 });
@@ -272,11 +274,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       const data = await state();
       sendResponse({ active, isIdle, data });
     } else if (message.type === "GET_CONNECTION") {
-      sendResponse(await SyncOnSync.pollPairing());
+      let connection = await SyncOnSync.pollPairing();
+      if (connection.status === "CONNECTED" && !connection.lastSyncedAt) {
+        if (active.domain) await commitActive();
+        connection = await SyncOnSync.syncNow();
+      }
+      sendResponse(connection);
     } else if (message.type === "START_PAIRING") {
       const data = await state();
       sendResponse(await SyncOnSync.startPairing(data.installationId));
+    } else if (message.type === "CANCEL_PAIRING") {
+      sendResponse(await SyncOnSync.cancelPairing());
     } else if (message.type === "SYNC_NOW") {
+      if (active.domain) await commitActive();
       sendResponse(await SyncOnSync.syncNow());
     } else if (message.type === "GET_INTERVAL_STATS") {
       sendResponse({ count: await SyncOnDb.count() });

@@ -10,7 +10,7 @@
 <body>
   <main>
     <header class="row between">
-      <div class="brand"><span class="mark">S</span><span>SyncOn</span></div>
+      <div class="brand"><img class="mark" src="../assets/icon-32.png" alt=""><span>SyncOn</span></div>
       <span id="status" class="row muted"><i class="status-dot"></i><span>Tracking</span></span>
     </header>
 
@@ -19,6 +19,11 @@
       <div id="total" class="metric">0m</div>
       <div id="current" class="muted">Waiting for an active website</div>
     </section>
+
+    <div id="scopeToggle" class="scope-toggle" hidden>
+      <button data-scope="ALL" class="active">All</button>
+      <button data-scope="CHROME">Chrome</button>
+    </div>
 
     <button id="connection" class="connection card" type="button">
       <span><strong>Android sync</strong><small id="connectionDetail" class="muted">Checking connection…</small></span>
