@@ -1,0 +1,5 @@
+project_id = "syncon"
+
+[auth]
+# Chrome creates a temporary identity before Android approves the QR request.
+enable_anonymous_sign_ins = true

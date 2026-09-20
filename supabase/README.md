@@ -6,7 +6,7 @@ This directory is the versioned source of truth for SyncOn's account and cross-p
 
 - Supabase project reference: `nqpristylxavyexqgjtp`
 - Contract version: `1`
-- Migration: `migrations/202609190001_syncon_sync_v1.sql`
+- Migrations: `migrations/202609190001_syncon_sync_v1.sql` through `202609200003_register_android_on_pair.sql`
 
 ## What migration v1 provides
 
@@ -22,6 +22,7 @@ This directory is the versioned source of truth for SyncOn's account and cross-p
 - `sync_pull_v1` for bounded revision-based downloads
 - `account_usage_summary_v1` for summed device time and overlap-adjusted active span
 - Supabase Realtime publication for synchronized record changes
+- Account membership and one-time Android-to-Chrome QR pairing in migration v2
 
 ## Deployment order
 

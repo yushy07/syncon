@@ -1,5 +1,7 @@
 # SyncOn sync API v1
 
+Pairing and account-scoped sync are added by migration v2. New clients use the `_v2` RPCs and the QR format in `shared/pairing-contract-v1.md`.
+
 All RPCs require a signed-in Supabase user. Clients send the project publishable key and the user's access token; they never use a service-role key.
 
 ## Register an installation
@@ -49,7 +51,7 @@ Uploads are idempotent by `(user_id, record_id)`. A correction is accepted only 
 
 ## Push settings and metadata
 
-Call `sync_push_state_v1` with any combination of these arrays:
+Call `sync_push_state_v2` with any combination of these arrays:
 
 - `p_sources`: source identity, display name, category, manual-category flag, revision and tombstone.
 - `p_limits`: stable record ID, installation, target type/identifier, optional platform, minutes, style, snooze, enabled state, revision and tombstone.
@@ -60,7 +62,7 @@ Omitted collections default to empty arrays. The call is atomic.
 
 ## Pull changes
 
-Call `sync_pull_v1` with the last durable cursor:
+Call `sync_pull_v2` with the last durable cursor:
 
 ```json
 { "p_after_revision": 0, "p_limit": 1000 }
