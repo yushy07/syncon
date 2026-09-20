@@ -11,6 +11,9 @@
     "tabs",
     "unlimitedStorage"
   ],
+  "host_permissions": [
+    "https://nqpristylxavyexqgjtp.supabase.co/*"
+  ],
   "incognito": "split",
   "icons": {
     "16": "assets/icon-16.png",

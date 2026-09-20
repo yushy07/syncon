@@ -111,9 +111,10 @@ function renderSettings() {
   }).join("");
   $("#backendInfo").innerHTML = `
     <div class="data-stat"><span>Platform</span><strong>CHROME</strong></div>
-    <div class="data-stat"><span>Schema</span><strong>1</strong></div>
+    <div class="data-stat"><span>Schema</span><strong>2</strong></div>
     <div class="data-stat"><span>Installation</span><strong title="${escapeHtml(appState.installationId)}">${escapeHtml(appState.installationId.slice(0, 8))}…</strong></div>
-    <div class="data-stat"><span>Sync state</span><strong>LOCAL_ONLY</strong></div>`;
+    <div class="data-stat"><span>Sync state</span><strong>${escapeHtml(appState.connection?.status || "LOCAL_ONLY")}</strong></div>
+    <div class="data-stat"><span>Last sync</span><strong>${appState.connection?.lastSyncedAt ? new Date(appState.connection.lastSyncedAt).toLocaleString() : "Not yet"}</strong></div>`;
 }
 
 function renderStatus() {
@@ -136,8 +137,13 @@ function openLimit(domain) {
 }
 
 async function load() {
-  live = await chrome.runtime.sendMessage({ type: "GET_LIVE_STATE" });
+  const [liveState, connection] = await Promise.all([
+    chrome.runtime.sendMessage({ type: "GET_LIVE_STATE" }),
+    chrome.runtime.sendMessage({ type: "GET_CONNECTION" })
+  ]);
+  live = liveState;
   appState = live.data;
+  appState.connection = connection;
   intervalCount = (await chrome.runtime.sendMessage({ type: "GET_INTERVAL_STATS" })).count || 0;
   $("#categoryFilter").innerHTML += CATEGORIES.map(category => `<option>${category}</option>`).join("");
   $("#domainCategory").innerHTML = CATEGORIES.map(category => `<option>${category}</option>`).join("");
@@ -163,6 +169,9 @@ $("#saveLimit").addEventListener("click", async event => {
   appState.domains[editingDomain] ||= { displayName: editingDomain, category: "Other" };
   appState.domains[editingDomain].category = $("#domainCategory").value;
   appState.domains[editingDomain].manuallyCategorized = true;
+  appState.domains[editingDomain].updatedAtUtc = Date.now();
+  appState.domains[editingDomain].localRevision = (appState.domains[editingDomain].localRevision || 0) + 1;
+  appState.domains[editingDomain].syncState = "LOCAL_ONLY";
   await chrome.storage.local.set({ limits: appState.limits, domains: appState.domains });
   $("#limitDialog").close();
   renderAll(); toast("Website controls saved.");
@@ -225,6 +234,13 @@ $("#clearData").addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ type: "CLEAR_HISTORY" });
   intervalCount = 0; appState.dailyTotals = {}; appState.dailyStates = {};
   renderAll(); toast("Chrome usage history cleared.");
+});
+
+$("#openPairing").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("onboarding/onboarding.html") }));
+$("#syncNow").addEventListener("click", async () => {
+  appState.connection = await chrome.runtime.sendMessage({ type: "SYNC_NOW" });
+  renderSettings();
+  toast(appState.connection.status === "CONNECTED" ? "Sync complete." : appState.connection.lastError || "Sync is not connected yet.");
 });
 
 load();

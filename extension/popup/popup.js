@@ -16,7 +16,10 @@ function renderDomains(totals, domains) {
 }
 
 async function render() {
-  const live = await chrome.runtime.sendMessage({ type: "GET_LIVE_STATE" });
+  const [live, connection] = await Promise.all([
+    chrome.runtime.sendMessage({ type: "GET_LIVE_STATE" }),
+    chrome.runtime.sendMessage({ type: "GET_CONNECTION" })
+  ]);
   const today = C.usageDate();
   const totals = { ...(live.data.dailyTotals[today] || {}) };
   if (live.active.domain && live.active.startedAt) {
@@ -33,6 +36,11 @@ async function render() {
   document.querySelector("#toggle").textContent = enabled ? "Pause tracking" : "Resume tracking";
   document.querySelector("#toggle").dataset.enabled = String(enabled);
   renderDomains(totals, live.data.domains);
+  const labels = {
+    CONNECTED: "Connected and syncing", SYNCING: "Syncing now…", PAIRING: "Waiting for phone scan",
+    OFFLINE: "Offline — local tracking continues", REVOKED: "Disconnected", LOCAL_ONLY: "Connect your phone"
+  };
+  document.querySelector("#connectionDetail").textContent = labels[connection.status] || "Connect your phone";
 }
 
 document.querySelector("#toggle").addEventListener("click", async event => {
@@ -41,4 +49,5 @@ document.querySelector("#toggle").addEventListener("click", async event => {
   await render();
 });
 document.querySelector("#dashboard").addEventListener("click", () => chrome.runtime.openOptionsPage());
+document.querySelector("#connection").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("onboarding/onboarding.html") }));
 render();

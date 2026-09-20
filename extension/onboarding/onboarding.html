@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Connect SyncOn</title>
+  <link rel="stylesheet" href="../shared.css">
+  <link rel="stylesheet" href="onboarding.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="brand"><span class="mark">S</span><span>SyncOn</span></header>
+    <section class="card pairing-card">
+      <div class="copy">
+        <div class="eyebrow">Chrome + Android</div>
+        <h1>Bring your screen time together</h1>
+        <p class="muted">Open SyncOn on your Android phone, choose <strong>Connect Chrome</strong>, then scan this one-time code. Your account password and activity never appear in the QR.</p>
+        <ol>
+          <li>Sign in to SyncOn on Android.</li>
+          <li>Open Settings → Connected devices.</li>
+          <li>Tap Connect Chrome and scan.</li>
+        </ol>
+        <div id="status" class="status-card" role="status">Preparing a secure pairing code…</div>
+        <div class="actions">
+          <button id="refresh" class="pill secondary" hidden>New code</button>
+          <button id="dashboard" class="pill">Continue to dashboard</button>
+        </div>
+      </div>
+      <div class="qr-panel">
+        <div id="qr" class="qr" aria-label="SyncOn pairing QR code"></div>
+        <strong id="qrTitle">Secure pairing code</strong>
+        <span id="expires" class="muted">Valid for 10 minutes</span>
+      </div>
+    </section>
+    <p class="privacy">Local tracking keeps working even when your phone is offline. Sync resumes automatically when the connection returns.</p>
+  </main>
+  <script src="../lib/qrcode.js"></script>
+  <script src="onboarding.js"></script>
+</body>
+</html>

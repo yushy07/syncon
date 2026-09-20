@@ -1,0 +1,233 @@
+(function (root) {
+  const api = root.SyncOnSupabase;
+  const db = root.SyncOnDb;
+  const core = root.SyncOnCore;
+  const CONNECTION_KEY = "connectionState";
+
+  const iso = value => new Date(value ?? Date.now()).toISOString();
+  const camelInterval = item => ({
+    recordId: item.record_id,
+    installationId: item.installation_id,
+    sourcePlatform: item.source_platform,
+    sourceType: item.source_type,
+    sourceIdentifier: item.source_identifier,
+    usageDate: item.usage_date,
+    startTimeUtc: Date.parse(item.start_time_utc),
+    endTimeUtc: Date.parse(item.end_time_utc),
+    durationMillis: Number(item.duration_millis),
+    timezoneId: item.timezone_id,
+    utcOffsetMinutes: Number(item.utc_offset_minutes),
+    createdAtUtc: Date.parse(item.client_created_at),
+    updatedAtUtc: Date.parse(item.client_updated_at),
+    localRevision: Number(item.local_revision),
+    serverRevision: Number(item.server_revision),
+    syncState: "SYNCED",
+    isDeleted: Boolean(item.is_deleted)
+  });
+
+  async function getConnection() {
+    return (await chrome.storage.local.get(CONNECTION_KEY))[CONNECTION_KEY] || { status: "LOCAL_ONLY" };
+  }
+
+  async function setConnection(patch) {
+    const value = { ...(await getConnection()), ...patch, updatedAt: Date.now() };
+    await chrome.storage.local.set({ [CONNECTION_KEY]: value });
+    return value;
+  }
+
+  function secretBytes() {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    return bytes;
+  }
+
+  function base64Url(bytes) {
+    let binary = "";
+    bytes.forEach(value => { binary += String.fromCharCode(value); });
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  async function sha256Hex(value) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+    return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  async function startPairing(installationId) {
+    await api.ensureAnonymousSession();
+    const secret = base64Url(secretBytes());
+    const response = await api.rpc("create_pairing_request_v2", {
+      p_installation_id: installationId,
+      p_secret_hash: await sha256Hex(secret),
+      p_display_name: "Chrome browser",
+      p_client_version: chrome.runtime.getManifest().version
+    });
+    return setConnection({
+      status: "PAIRING",
+      requestId: response.request_id,
+      secret,
+      qrPayload: `syncon://pair?v=1&id=${encodeURIComponent(response.request_id)}&secret=${encodeURIComponent(secret)}`,
+      expiresAt: Date.parse(response.expires_at),
+      lastError: null
+    });
+  }
+
+  async function pollPairing() {
+    const connection = await getConnection();
+    if (connection.status !== "PAIRING" || !connection.requestId) return connection;
+    if (connection.expiresAt <= Date.now()) return setConnection({ status: "EXPIRED" });
+    try {
+      const result = await api.rpc("get_pairing_status_v2", { p_request_id: connection.requestId });
+      if (result.status === "CONNECTED") {
+        const connected = await setConnection({ status: "CONNECTED", accountId: result.account_id, connectedAt: Date.now(), secret: null, qrPayload: null, lastError: null });
+        await syncNow();
+        return connected;
+      }
+      if (["EXPIRED", "CANCELLED", "NOT_FOUND"].includes(result.status)) return setConnection({ status: result.status });
+      return connection;
+    } catch (error) {
+      return setConnection({ status: "ERROR", lastError: error.message });
+    }
+  }
+
+  const intervalPayload = item => ({
+    record_id: item.recordId,
+    installation_id: item.installationId,
+    source_platform: item.sourcePlatform,
+    source_type: item.sourceType,
+    source_identifier: item.sourceIdentifier,
+    usage_date: item.usageDate,
+    start_time_utc: iso(item.startTimeUtc),
+    end_time_utc: iso(item.endTimeUtc),
+    duration_millis: item.durationMillis,
+    timezone_id: item.timezoneId,
+    utc_offset_minutes: item.utcOffsetMinutes,
+    client_created_at: iso(item.createdAtUtc),
+    client_updated_at: iso(item.updatedAtUtc),
+    local_revision: item.localRevision || 1,
+    is_deleted: Boolean(item.isDeleted)
+  });
+
+  async function pushIntervals() {
+    let pending = await db.getPending(250);
+    while (pending.length) {
+      await api.rpc("sync_push_intervals_v2", { p_intervals: pending.map(intervalPayload) });
+      await db.markSynced(pending.map(item => item.recordId));
+      if (pending.length < 250) break;
+      pending = await db.getPending(250);
+    }
+  }
+
+  async function pushState(local) {
+    const sources = Object.entries(local.domains || {}).map(([domain, value]) => ({
+      source_type: "CHROME_DOMAIN", source_identifier: domain,
+      display_name: value.displayName || domain, category: value.category || "Other",
+      is_category_manually_set: Boolean(value.manuallyCategorized),
+      client_updated_at: iso(value.updatedAtUtc || 0), local_revision: value.localRevision || 1,
+      is_deleted: false
+    }));
+    const limits = Object.entries(local.limits || {}).map(([domain, value]) => ({
+      record_id: value.recordId || `chrome-domain-limit:${domain}`,
+      installation_id: local.installationId, target_type: "SOURCE", source_platform: "CHROME",
+      target_identifier: domain, daily_limit_minutes: value.limitMinutes || null,
+      blocking_style: value.style || "STRICT", snooze_minutes: value.snoozeMinutes || 5,
+      is_enabled: Boolean(value.enabled), client_updated_at: iso(value.updatedAtUtc || 0),
+      local_revision: value.localRevision || 1, is_deleted: Boolean(value.isDeleted)
+    }));
+    Object.entries(local.categoryLimits || {}).forEach(([category, value]) => limits.push({
+      record_id: value.recordId || `shared-category-limit:${category}`,
+      installation_id: local.installationId, target_type: "CATEGORY", source_platform: null,
+      target_identifier: category, daily_limit_minutes: value.limitMinutes || null,
+      blocking_style: value.style || "STRICT", snooze_minutes: value.snoozeMinutes || 5,
+      is_enabled: Boolean(value.enabled), client_updated_at: iso(value.updatedAtUtc || 0),
+      local_revision: value.localRevision || 1, is_deleted: Boolean(value.isDeleted)
+    }));
+    const events = (local.blockEvents || []).map(value => ({
+      record_id: value.recordId, installation_id: local.installationId,
+      source_platform: "CHROME", source_identifier: value.domain,
+      category: value.category || null, usage_date: value.usageDate,
+      event_type: value.eventType, event_time_utc: iso(value.timestamp),
+      extra_minutes: value.extraMinutes || 0, local_revision: value.localRevision || 1,
+      is_deleted: Boolean(value.isDeleted)
+    }));
+    await api.rpc("sync_push_state_v2", {
+      p_sources: sources, p_limits: limits, p_block_events: events, p_source_mappings: []
+    });
+  }
+
+  async function applyPull(payload) {
+    const stored = await chrome.storage.local.get(["domains", "limits", "categoryLimits", "blockEvents"]);
+    const domains = stored.domains || {};
+    const limits = stored.limits || {};
+    const categoryLimits = stored.categoryLimits || {};
+    const blockEvents = stored.blockEvents || [];
+    (payload.sources || []).filter(item => item.source_type === "CHROME_DOMAIN").forEach(item => {
+      domains[item.source_identifier] = {
+        displayName: item.display_name || item.source_identifier,
+        category: item.category || "Other",
+        manuallyCategorized: Boolean(item.is_category_manually_set),
+        updatedAtUtc: Date.parse(item.client_updated_at), localRevision: Number(item.local_revision),
+        syncState: "SYNCED"
+      };
+    });
+    (payload.limits || []).forEach(item => {
+      const value = {
+        recordId: item.record_id, enabled: Boolean(item.is_enabled),
+        limitMinutes: item.daily_limit_minutes, style: item.blocking_style,
+        snoozeMinutes: item.snooze_minutes, updatedAtUtc: Date.parse(item.client_updated_at),
+        localRevision: Number(item.local_revision), serverRevision: Number(item.server_revision),
+        syncState: "SYNCED", isDeleted: Boolean(item.is_deleted)
+      };
+      if (item.target_type === "CATEGORY") categoryLimits[item.target_identifier] = { ...value, category: item.target_identifier };
+      if (item.target_type === "SOURCE" && item.source_platform === "CHROME") limits[item.target_identifier] = value;
+    });
+    const eventIds = new Set(blockEvents.map(item => item.recordId));
+    (payload.block_events || []).filter(item => item.source_platform === "CHROME").forEach(item => {
+      if (!eventIds.has(item.record_id)) blockEvents.push({
+        recordId: item.record_id, usageDate: item.usage_date, domain: item.source_identifier,
+        category: item.category, timestamp: Date.parse(item.event_time_utc),
+        eventType: item.event_type, extraMinutes: item.extra_minutes,
+        localRevision: Number(item.local_revision), syncState: "SYNCED"
+      });
+    });
+    await db.putIntervals((payload.intervals || []).map(camelInterval));
+    const dailyTotals = {};
+    (await db.getAll()).filter(item => !item.isDeleted).forEach(item => {
+      dailyTotals[item.usageDate] ||= {};
+      dailyTotals[item.usageDate][item.sourceIdentifier] = (dailyTotals[item.usageDate][item.sourceIdentifier] || 0) + item.durationMillis;
+    });
+    await chrome.storage.local.set({ domains, limits, categoryLimits, blockEvents, dailyTotals });
+  }
+
+  async function pullAll() {
+    let cursor = Number((await chrome.storage.local.get("syncCursor")).syncCursor || 0);
+    let page;
+    do {
+      page = await api.rpc("sync_pull_v2", { p_after_revision: cursor, p_limit: 1000 });
+      await applyPull(page);
+      cursor = Number(page.next_revision || cursor);
+      await chrome.storage.local.set({ syncCursor: cursor });
+    } while (page.has_more);
+  }
+
+  async function syncNow() {
+    const connection = await getConnection();
+    if (!["CONNECTED", "SYNCING", "OFFLINE"].includes(connection.status)) return connection;
+    const local = await chrome.storage.local.get(["installationId", "domains", "limits", "categoryLimits", "blockEvents"]);
+    try {
+      await setConnection({ status: "SYNCING", lastError: null });
+      await api.rpc("sync_register_installation_v2", {
+        p_installation_id: local.installationId, p_platform: "CHROME",
+        p_display_name: "Chrome browser", p_client_version: chrome.runtime.getManifest().version
+      });
+      await pushIntervals();
+      await pushState(local);
+      await pullAll();
+      return setConnection({ status: "CONNECTED", lastSyncedAt: Date.now(), lastError: null });
+    } catch (error) {
+      const revoked = /Connected SyncOn account required/i.test(error.message);
+      return setConnection({ status: revoked ? "REVOKED" : "OFFLINE", lastError: error.message });
+    }
+  }
+
+  root.SyncOnSync = { getConnection, startPairing, pollPairing, syncNow };
+})(typeof globalThis !== "undefined" ? globalThis : this);

@@ -1,4 +1,4 @@
-importScripts("lib/core.js", "lib/db.js");
+importScripts("lib/core.js", "lib/db.js", "lib/backend-config.js", "lib/supabase.js", "lib/sync.js");
 
 const C = SyncOnCore;
 const STORAGE_VERSION = 1;
@@ -212,12 +212,15 @@ async function cleanup() {
   await chrome.storage.local.set({ dailyTotals: data.dailyTotals, dailyStates: data.dailyStates });
 }
 
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled.addListener(async details => {
   await migrateLegacyIntervals();
   await state();
   chrome.idle.setDetectionInterval(60);
   chrome.alarms.create(ALARM_NAME, { periodInMinutes: 0.5 });
   await cleanup();
+  if (details.reason === "install") {
+    await chrome.tabs.create({ url: chrome.runtime.getURL("onboarding/onboarding.html") });
+  }
 });
 
 chrome.runtime.onStartup.addListener(async () => {
@@ -239,6 +242,12 @@ chrome.alarms.onAlarm.addListener(async alarm => {
     await enforce(tab);
   }
   if (new Date().getHours() === 4 && new Date().getMinutes() < 2) await cleanup();
+  const connection = await SyncOnSync.getConnection();
+  if (connection.status === "PAIRING") await SyncOnSync.pollPairing();
+  if (["CONNECTED", "SYNCING", "OFFLINE"].includes(connection.status)
+      && (!connection.lastSyncedAt || Date.now() - connection.lastSyncedAt >= 60_000)) {
+    await SyncOnSync.syncNow();
+  }
 });
 
 chrome.tabs.onActivated.addListener(refreshCurrentTab);
@@ -262,6 +271,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     if (message.type === "GET_LIVE_STATE") {
       const data = await state();
       sendResponse({ active, isIdle, data });
+    } else if (message.type === "GET_CONNECTION") {
+      sendResponse(await SyncOnSync.pollPairing());
+    } else if (message.type === "START_PAIRING") {
+      const data = await state();
+      sendResponse(await SyncOnSync.startPairing(data.installationId));
+    } else if (message.type === "SYNC_NOW") {
+      sendResponse(await SyncOnSync.syncNow());
     } else if (message.type === "GET_INTERVAL_STATS") {
       sendResponse({ count: await SyncOnDb.count() });
     } else if (message.type === "EXPORT_BACKUP") {

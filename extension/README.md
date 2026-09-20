@@ -10,7 +10,7 @@ Local-first Chrome screen-time tracking for the SyncOn project. The extension re
 4. Choose this `extension` folder.
 5. Pin SyncOn from the Chrome toolbar.
 
-The extension works without a build step and without a backend.
+The extension works without a build step. On first install it opens a local pairing page; scan its one-time QR code from the Android app to connect Supabase sync.
 
 ## Included
 
@@ -30,9 +30,9 @@ The extension works without a build step and without a backend.
 - Cross-platform-ready timestamps and local sync metadata
 - IndexedDB interval storage with Manifest V3 worker-session recovery
 
-## Privacy
+## Pairing and privacy
 
-All data is stored with `chrome.storage.local`. No network request or backend connection is included in this phase.
+Tracking remains local-first in IndexedDB and `chrome.storage.local`. A fresh install creates an anonymous Supabase identity, and Android grants only that browser installation access to the user's SyncOn account. The QR contains a short-lived request ID and one-time secret—not credentials or activity data.
 
 ## Developer checks
 

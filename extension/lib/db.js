@@ -43,6 +43,30 @@
     });
   }
 
+  async function putIntervals(intervals) {
+    if (!intervals.length) return;
+    const db = await open();
+    return new Promise((resolve, reject) => {
+      const transaction = db.transaction(STORE, "readwrite");
+      const store = transaction.objectStore(STORE);
+      intervals.forEach(interval => store.put(interval));
+      transaction.oncomplete = () => { db.close(); resolve(); };
+      transaction.onerror = () => { db.close(); reject(transaction.error); };
+      transaction.onabort = () => { db.close(); reject(transaction.error); };
+    });
+  }
+
+  async function getPending(limit = 250) {
+    return (await getAll()).filter(item => item.syncState !== "SYNCED").slice(0, limit);
+  }
+
+  async function markSynced(recordIds) {
+    if (!recordIds.length) return;
+    const ids = new Set(recordIds);
+    const records = (await getAll()).filter(item => ids.has(item.recordId)).map(item => ({ ...item, syncState: "SYNCED" }));
+    await putIntervals(records);
+  }
+
   async function getAll() {
     const db = await open();
     return new Promise((resolve, reject) => {
@@ -92,5 +116,5 @@
     });
   }
 
-  root.SyncOnDb = { addIntervals, getAll, count, deleteOlderThan, clear };
+  root.SyncOnDb = { addIntervals, putIntervals, getPending, markSynced, getAll, count, deleteOlderThan, clear };
 })(typeof globalThis !== "undefined" ? globalThis : this);
