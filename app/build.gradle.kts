@@ -21,6 +21,8 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "SUPABASE_URL", "\"https://nqpristylxavyexqgjtp.supabase.co\"")
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"sb_publishable_AE1V984zNrbJ3YlnJQjMVg_cW7n7sRW\"")
     }
 
     buildFeatures {
@@ -82,6 +84,7 @@ dependencies {
 
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.google.code.scanner)
 
     testImplementation(libs.junit)
     testImplementation(libs.androidx.test.core)

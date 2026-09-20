@@ -393,7 +393,11 @@ class FakeAppInfoDao : AppInfoDao {
         return appInfos.map { insertOrIgnore(it) }
     }
 
-    override suspend fun updateCategory(packageName: String, category: String, isManuallySet: Boolean) {
+    override suspend fun upsert(appInfo: AppInfo) {
+        apps[appInfo.packageName] = appInfo
+    }
+
+    override suspend fun updateCategory(packageName: String, category: String, updatedAtUtc: Long, isManuallySet: Boolean) {
         val existing = apps[packageName] ?: return
         apps[packageName] = existing.copy(category = category, isCategoryManuallySet = isManuallySet)
     }
@@ -594,12 +598,19 @@ class FakeUsageIntervalDao : UsageIntervalDao {
         if (this.intervals.putIfAbsent(interval.recordId, interval) == null) 1L else -1L
     }
 
+    override suspend fun upsertAll(intervals: List<UsageInterval>) {
+        intervals.forEach { interval -> this.intervals[interval.recordId] = interval }
+    }
+
     override suspend fun getPending(limit: Int): List<UsageInterval> = intervals.values
         .filter { it.syncState in setOf("LOCAL_ONLY", "PENDING_UPLOAD", "SYNC_FAILED") && !it.isDeleted }
         .sortedBy { it.startTimeUtc }
         .take(limit)
 
     override suspend fun getAllStatic(): List<UsageInterval> = intervals.values.sortedBy { it.startTimeUtc }
+
+    override suspend fun getForDate(usageDate: String): List<UsageInterval> =
+        intervals.values.filter { it.usageDate == usageDate && !it.isDeleted }.sortedBy { it.startTimeUtc }
 
     override suspend fun updateSyncState(
         recordIds: List<String>,

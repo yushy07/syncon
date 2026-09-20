@@ -11,11 +11,17 @@ interface UsageIntervalDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertAll(intervals: List<UsageInterval>): List<Long>
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(intervals: List<UsageInterval>)
+
     @Query("SELECT * FROM usage_interval WHERE syncState IN ('LOCAL_ONLY', 'PENDING_UPLOAD', 'SYNC_FAILED') AND isDeleted = 0 ORDER BY startTimeUtc ASC LIMIT :limit")
     suspend fun getPending(limit: Int): List<UsageInterval>
 
     @Query("SELECT * FROM usage_interval ORDER BY startTimeUtc ASC")
     suspend fun getAllStatic(): List<UsageInterval>
+
+    @Query("SELECT * FROM usage_interval WHERE usageDate = :usageDate AND isDeleted = 0 ORDER BY startTimeUtc")
+    suspend fun getForDate(usageDate: String): List<UsageInterval>
 
     @Query("UPDATE usage_interval SET syncState = :syncState, serverRevision = :serverRevision, updatedAtUtc = :updatedAtUtc WHERE recordId IN (:recordIds)")
     suspend fun updateSyncState(

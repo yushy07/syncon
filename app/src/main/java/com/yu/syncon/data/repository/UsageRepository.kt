@@ -15,6 +15,7 @@ import com.yu.syncon.data.local.dao.AppLimitSettingsDao
 import com.yu.syncon.data.local.dao.BlockEventDao
 import com.yu.syncon.data.local.dao.DailyUsageDao
 import com.yu.syncon.data.local.dao.UsageIntervalDao
+import com.yu.syncon.data.local.dao.RemoteSourceTotal
 import com.yu.syncon.data.local.entity.AppConfig
 import com.yu.syncon.data.local.entity.AppDailyState
 import com.yu.syncon.data.local.entity.AppInfo
@@ -25,6 +26,7 @@ import com.yu.syncon.data.local.entity.UsageInterval
 import com.yu.syncon.util.CategoryMapper
 import com.yu.syncon.util.DiagnosticLog
 import com.yu.syncon.util.UsageDayCalculator
+import com.yu.syncon.service.worker.CloudSyncWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -49,11 +51,22 @@ class UsageRepository(
     private val currentTimeMillis: () -> Long = System::currentTimeMillis
 ) {
 
+    data class CrossPlatformTotals(
+        val androidMillis: Long,
+        val chromeMillis: Long,
+        val summedDeviceMillis: Long,
+        val activeDigitalSpanMillis: Long
+    )
+
     private val usageStatsManager: UsageStatsManager? by lazy {
         context?.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
     }
     private val trackingStateRepository = TrackingStateRepository(appConfigDao, currentTimeMillis)
     private val syncQueueRepository = SyncQueueRepository(usageIntervalDao)
+
+    private fun scheduleCloudSync() {
+        context?.let(CloudSyncWorker::runNow)
+    }
 
     // ---------------------------------------------------------
     // Installed Apps Sync
@@ -112,7 +125,8 @@ class UsageRepository(
     }
 
     suspend fun updateAppCategory(packageName: String, newCategory: String) = withContext(Dispatchers.IO) {
-        appInfoDao.updateCategory(packageName, newCategory, isManuallySet = true)
+        appInfoDao.updateCategory(packageName, newCategory, currentTimeMillis(), isManuallySet = true)
+        scheduleCloudSync()
     }
 
     // ---------------------------------------------------------
@@ -532,6 +546,7 @@ class UsageRepository(
                 timestamp = System.currentTimeMillis()
             )
         )
+        scheduleCloudSync()
     }
 
     suspend fun markAppBlocked(packageName: String) = withContext(Dispatchers.IO) {
@@ -545,6 +560,7 @@ class UsageRepository(
                 timestamp = System.currentTimeMillis()
             )
         )
+        scheduleCloudSync()
     }
 
     suspend fun snoozeApp(packageName: String, extraMinutes: Int) = withContext(Dispatchers.IO) {
@@ -559,6 +575,7 @@ class UsageRepository(
                 timestamp = System.currentTimeMillis()
             )
         )
+        scheduleCloudSync()
     }
 
     // ---------------------------------------------------------
@@ -581,10 +598,12 @@ class UsageRepository(
                 isDeleted = false
             )
         )
+        scheduleCloudSync()
     }
 
     suspend fun deleteLimitSettings(packageName: String) = withContext(Dispatchers.IO) {
         appLimitSettingsDao.markDeleted(packageName, currentTimeMillis())
+        scheduleCloudSync()
     }
 
     // ---------------------------------------------------------
@@ -604,11 +623,50 @@ class UsageRepository(
         dailyUsageDao.deleteOlderThan(cutoffDate)
         blockEventDao.deleteOlderThan(cutoffDate)
         syncQueueRepository.prune(cutoffDate)
+        database?.remoteUsageIntervalDao()?.deleteOlderThan(cutoffDate)
     }
 
     // ---------------------------------------------------------
     // Dashboard & Trends Queries
     // ---------------------------------------------------------
+
+    suspend fun getCrossPlatformTotals(usageDate: String = UsageDayCalculator.getTodayUsageDate()): CrossPlatformTotals = withContext(Dispatchers.IO) {
+        val androidMillis = dailyUsageDao.getUsageForDateStatic(usageDate).sumOf { it.durationMillis }
+        val remoteDao = database?.remoteUsageIntervalDao()
+        val chromeIntervals = remoteDao?.getForDate(usageDate).orEmpty()
+        val chromeMillis = chromeIntervals.sumOf { it.durationMillis }
+        val ranges = buildList {
+            usageIntervalDao.getForDate(usageDate).forEach { add(it.startTimeUtc to it.endTimeUtc) }
+            chromeIntervals.forEach { add(it.startTimeUtc to it.endTimeUtc) }
+        }.sortedBy { it.first }
+        var activeSpan = 0L
+        var currentStart = 0L
+        var currentEnd = 0L
+        ranges.forEach { (start, end) ->
+            if (currentEnd == 0L) {
+                currentStart = start
+                currentEnd = end
+            } else if (start <= currentEnd) {
+                currentEnd = maxOf(currentEnd, end)
+            } else {
+                activeSpan += currentEnd - currentStart
+                currentStart = start
+                currentEnd = end
+            }
+        }
+        if (currentEnd > currentStart) activeSpan += currentEnd - currentStart
+        CrossPlatformTotals(
+            androidMillis = androidMillis,
+            chromeMillis = chromeMillis,
+            summedDeviceMillis = androidMillis + chromeMillis,
+            activeDigitalSpanMillis = activeSpan
+        )
+    }
+
+    suspend fun getRemoteSourceTotals(usageDate: String = UsageDayCalculator.getTodayUsageDate()): List<RemoteSourceTotal> =
+        withContext(Dispatchers.IO) {
+            database?.remoteUsageIntervalDao()?.sourceTotalsForDate(usageDate).orEmpty()
+        }
 
     fun getTodayUsageFlow(): Flow<List<DailyUsage>> {
         val today = UsageDayCalculator.getTodayUsageDate()
@@ -806,6 +864,7 @@ class UsageRepository(
                 }.toString()
             )
         )
+        scheduleCloudSync()
     }
 
     private suspend fun getCategorySnoozeMinutes(category: String, usageDate: String): Int {
@@ -1090,12 +1149,34 @@ class UsageRepository(
                 }.toString()
             )
         )
+        scheduleCloudSync()
     }
 
     suspend fun getAllCategoryLimits(): List<CategoryLimitSetting> = withContext(Dispatchers.IO) {
         CategoryMapper.ALL_CATEGORIES.mapNotNull { cat ->
             getCategoryLimit(cat)
         }
+    }
+
+    suspend fun applyRemoteCategoryLimit(setting: CategoryLimitSetting) = withContext(Dispatchers.IO) {
+        appConfigDao.set(
+            AppConfig(
+                "cat_limit_${setting.category}",
+                JSONObject().apply {
+                    put("category", setting.category)
+                    put("dailyLimitMinutes", setting.dailyLimitMinutes)
+                    put("blockingStyle", setting.blockingStyle)
+                    put("snoozeMinutes", setting.snoozeMinutes)
+                    put("isEnabled", setting.isEnabled)
+                    put("recordId", setting.recordId)
+                    put("updatedAtUtc", setting.updatedAtUtc)
+                    put("localRevision", setting.localRevision)
+                    put("serverRevision", setting.serverRevision)
+                    put("syncState", "SYNCED")
+                    put("isDeleted", setting.isDeleted)
+                }.toString()
+            )
+        )
     }
 
     suspend fun getTodayCategoryUsageMinutes(category: String): Long = withContext(Dispatchers.IO) {

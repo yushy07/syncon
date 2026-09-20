@@ -85,6 +85,7 @@ import kotlinx.coroutines.launch
 
 enum class SettingsSubScreen {
     HOME,
+    CONNECTED_DEVICES,
     PERMISSION_HEALTH,
     USAGE_REVOKED_WARNING,
     ACCESSIBILITY_REVOKED_WARNING,
@@ -114,6 +115,9 @@ fun SettingsScreen(
                 isBatteryOptimizationIgnored = isBatteryOptimizationIgnored,
                 repository = repository,
                 onNavigate = { subScreen = it }
+            )
+            SettingsSubScreen.CONNECTED_DEVICES -> ConnectedDevicesScreen(
+                onBack = { subScreen = SettingsSubScreen.HOME }
             )
             SettingsSubScreen.PERMISSION_HEALTH -> Screen33PermissionHealth(
                 hasUsageAccess = hasUsageAccess,
@@ -226,6 +230,11 @@ private fun Screen32SettingsHome(
             modifier = Modifier.fillMaxWidth()
         ) {
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+                SettingsClickableRow(
+                    title = "Connected devices",
+                    subtitle = "Sync Android with the Chrome extension",
+                    onClick = { onNavigate(SettingsSubScreen.CONNECTED_DEVICES) }
+                )
                 SettingsClickableRow(
                     title = "Permissions",
                     subtitle = if (allPermissionsGranted) "All permissions active" else "Attention required",

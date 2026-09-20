@@ -9,5 +9,10 @@ data class AppInfo(
     val appName: String,
     val category: String,
     val isCategoryManuallySet: Boolean = false,
-    val isSystemApp: Boolean = false
+    val isSystemApp: Boolean = false,
+    val updatedAtUtc: Long = System.currentTimeMillis(),
+    val localRevision: Long = 1L,
+    val serverRevision: Long? = null,
+    val syncState: String = "LOCAL_ONLY",
+    val isDeleted: Boolean = false
 )

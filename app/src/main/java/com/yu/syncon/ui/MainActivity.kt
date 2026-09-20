@@ -33,6 +33,7 @@ import androidx.navigation.navArgument
 import com.yu.syncon.SyncOnApp
 import com.yu.syncon.data.repository.UsageRepository
 import com.yu.syncon.service.tracking.ForegroundTrackingService
+import com.yu.syncon.service.worker.CloudSyncWorker
 import com.yu.syncon.ui.appdetail.AppDetailScreen
 import com.yu.syncon.ui.applist.AppListScreen
 import com.yu.syncon.ui.dashboard.DashboardScreen
@@ -96,6 +97,9 @@ class MainActivity : ComponentActivity() {
                 repository.reconcileGaps()
                 repository.syncInstalledApps()
             }
+        }
+        if ((applicationContext as? SyncOnApp)?.cloudSyncRepository?.isSignedIn() == true) {
+            CloudSyncWorker.runNow(this)
         }
     }
 

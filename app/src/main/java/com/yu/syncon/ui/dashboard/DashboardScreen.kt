@@ -79,6 +79,12 @@ enum class DashboardViewMode {
     CATEGORIES
 }
 
+enum class PlatformViewMode {
+    ALL,
+    ANDROID,
+    CHROME
+}
+
 @Composable
 fun DashboardScreen(
     repository: UsageRepository,
@@ -95,6 +101,7 @@ fun DashboardScreen(
     val limitsMap = remember(activeLimits) { activeLimits.associateBy { it.packageName } }
 
     var viewMode by remember { mutableStateOf(DashboardViewMode.ALL_APPS) }
+    var platformView by remember { mutableStateOf(PlatformViewMode.ALL) }
     var hourlyBars by remember { mutableStateOf<List<com.yu.syncon.ui.components.BarChartItem>>(emptyList()) }
 
     // Screen 9: Load Today's 6 4-hour intervals (4AM, 8AM, 12PM, 4PM, 8PM, 12AM)
@@ -109,12 +116,24 @@ fun DashboardScreen(
     val categoryLimits by produceState<Map<String, UsageRepository.CategoryLimitSetting>>(initialValue = emptyMap(), key1 = totalMinutes) {
         value = repository.getAllCategoryLimits().associateBy { it.category }
     }
+    val crossPlatformTotals by produceState(
+        initialValue = UsageRepository.CrossPlatformTotals(0, 0, 0, 0),
+        key1 = totalMinutes
+    ) { value = repository.getCrossPlatformTotals() }
+    val remoteSources by produceState(initialValue = emptyList<com.yu.syncon.data.local.dao.RemoteSourceTotal>(), key1 = totalMinutes) {
+        value = repository.getRemoteSourceTotals()
+    }
 
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
     val positiveUsages = todayUsages.filter { it.durationMinutes > 0 }.sortedByDescending { it.durationMinutes }
     val todayMins = totalMinutes ?: 0L
     val yestMins = yesterdayMinutes ?: 0L
+    val selectedMinutes = when (platformView) {
+        PlatformViewMode.ALL -> crossPlatformTotals.summedDeviceMillis / 60_000L
+        PlatformViewMode.ANDROID -> todayMins
+        PlatformViewMode.CHROME -> crossPlatformTotals.chromeMillis / 60_000L
+    }
 
     // Screen 11: Identify approaching limit apps (within 80% of limit, or <= 5 min left)
     val approachingApps = positiveUsages.mapNotNull { usage ->
@@ -192,7 +211,7 @@ fun DashboardScreen(
         }
 
         // Screen 11: Dedicated Approaching Limit Card
-        if (approachingApps.isNotEmpty()) {
+        if (approachingApps.isNotEmpty() && platformView != PlatformViewMode.CHROME) {
             item {
                 Card(
                     shape = CardShape,
@@ -276,18 +295,54 @@ fun DashboardScreen(
             }
         }
 
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(FilterChipShape)
+                    .background(CardSurfaceVariant)
+                    .padding(3.dp)
+            ) {
+                FilterToggleChip("All", platformView == PlatformViewMode.ALL) { platformView = PlatformViewMode.ALL }
+                Spacer(Modifier.width(4.dp))
+                FilterToggleChip("Android", platformView == PlatformViewMode.ANDROID) { platformView = PlatformViewMode.ANDROID }
+                Spacer(Modifier.width(4.dp))
+                FilterToggleChip("Chrome", platformView == PlatformViewMode.CHROME) { platformView = PlatformViewMode.CHROME }
+            }
+        }
+
         // Hero Today Card (Screens 8 & 9)
         item {
             TodayHeroCard(
-                todayMinutes = todayMins,
-                yesterdayMinutes = yestMins,
+                todayMinutes = selectedMinutes,
+                yesterdayMinutes = if (platformView == PlatformViewMode.ANDROID) yestMins else 0L,
                 cleanDayStreak = cleanDayStreak,
-                hourlyBars = hourlyBars
+                hourlyBars = if (platformView == PlatformViewMode.ANDROID) hourlyBars else emptyList()
             )
         }
 
+        if (platformView == PlatformViewMode.ALL && crossPlatformTotals.summedDeviceMillis > 0L) {
+            item {
+                Card(
+                    shape = CardShape,
+                    colors = CardDefaults.cardColors(containerColor = CardSurface),
+                    border = BorderStroke(1.dp, CardBorder),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        MetricLabel("Summed device time", crossPlatformTotals.summedDeviceMillis)
+                        MetricLabel("Active digital span", crossPlatformTotals.activeDigitalSpanMillis)
+                    }
+                }
+            }
+        }
+
         // Screen 8: Empty State when 0 usage
-        if (positiveUsages.isEmpty()) {
+        if ((platformView == PlatformViewMode.CHROME && remoteSources.isEmpty()) ||
+            (platformView != PlatformViewMode.CHROME && positiveUsages.isEmpty())) {
             item {
                 Card(
                     shape = CardShape,
@@ -334,6 +389,18 @@ fun DashboardScreen(
                         TaglineItalicText(text = "\"Small changes. A brighter tomorrow.\"")
                     }
                 }
+            }
+        } else if (platformView == PlatformViewMode.CHROME) {
+            item {
+                Text(
+                    text = "Chrome websites",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+            }
+            items(remoteSources, key = { it.sourceIdentifier }) { source ->
+                RemoteSourceRow(source.sourceIdentifier, source.durationMillis)
             }
         } else {
             // Screen 10: Toggle Chips [All Apps] / [Categories]
@@ -412,6 +479,47 @@ fun DashboardScreen(
 
         item {
             Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+@Composable
+private fun MetricLabel(label: String, millis: Long) {
+    Column {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+        val totalMinutes = millis / 60_000L
+        Text(
+            "${totalMinutes / 60}h ${String.format("%02d", totalMinutes % 60)}m",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary
+        )
+    }
+}
+
+@Composable
+private fun RemoteSourceRow(source: String, durationMillis: Long) {
+    Card(
+        shape = CardShape,
+        colors = CardDefaults.cardColors(containerColor = CardSurface),
+        border = BorderStroke(1.dp, CardBorder),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(source, fontWeight = FontWeight.SemiBold, color = TextPrimary)
+                Text("Chrome website", style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+            }
+            val minutes = durationMillis / 60_000L
+            Text(
+                if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "${minutes}m",
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
         }
     }
 }
