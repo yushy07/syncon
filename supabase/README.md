@@ -6,7 +6,7 @@ This directory is the versioned source of truth for SyncOn's account and cross-p
 
 - Supabase project reference: `nqpristylxavyexqgjtp`
 - Contract version: `1`
-- Migrations: `migrations/202609190001_syncon_sync_v1.sql` through `202609200003_register_android_on_pair.sql`
+- Migrations: `migrations/202609190001_syncon_sync_v1.sql` through `202609200004_pairing_lifecycle.sql`
 
 ## What migration v1 provides
 
