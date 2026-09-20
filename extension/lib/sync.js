@@ -74,7 +74,7 @@
   async function pollPairing() {
     const connection = await getConnection();
     if (connection.status !== "PAIRING" || !connection.requestId) return connection;
-    if (connection.expiresAt <= Date.now()) return setConnection({ status: "EXPIRED" });
+    if (connection.expiresAt <= Date.now()) return setConnection({ status: "EXPIRED", secret: null, qrPayload: null });
     try {
       const result = await api.rpc("get_pairing_status_v2", { p_request_id: connection.requestId });
       if (result.status === "CONNECTED") {

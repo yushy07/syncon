@@ -74,6 +74,7 @@ fun ConnectedDevicesScreen(onBack: () -> Unit) {
     var message by remember { mutableStateOf<String?>(null) }
     var devices by remember { mutableStateOf<List<ConnectedInstallation>>(emptyList()) }
     var pendingRevoke by remember { mutableStateOf<ConnectedInstallation?>(null) }
+    var pendingPairingCode by remember { mutableStateOf<String?>(null) }
 
     suspend fun refreshDevices() {
         if (!cloud.isSignedIn()) {
@@ -99,13 +100,7 @@ fun ConnectedDevicesScreen(onBack: () -> Unit) {
         GmsBarcodeScanning.getClient(activity, options).startScan()
             .addOnSuccessListener { barcode ->
                 val rawValue = barcode.rawValue ?: return@addOnSuccessListener
-                scope.launch {
-                    busy = true
-                    message = runCatching { cloud.claimPairing(rawValue) }
-                        .onSuccess { refreshDevices() }
-                        .fold(onSuccess = { it }, onFailure = { it.message ?: "Pairing failed" })
-                    busy = false
-                }
+                pendingPairingCode = rawValue
             }
             .addOnFailureListener { message = it.message ?: "Could not scan this code" }
     }
@@ -284,6 +279,27 @@ fun ConnectedDevicesScreen(onBack: () -> Unit) {
                 }) { Text("Disconnect", color = AccentCoral) }
             },
             dismissButton = { TextButton(onClick = { pendingRevoke = null }) { Text("Cancel") } }
+        )
+    }
+
+    pendingPairingCode?.let { code ->
+        AlertDialog(
+            onDismissRequest = { pendingPairingCode = null },
+            title = { Text("Connect this Chrome browser?") },
+            text = { Text("Approve only if this QR is currently visible on a computer you recognize. The browser will be able to sync your SyncOn activity and settings.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingPairingCode = null
+                    scope.launch {
+                        busy = true
+                        message = runCatching { cloud.claimPairing(code) }
+                            .onSuccess { refreshDevices() }
+                            .fold(onSuccess = { it }, onFailure = { it.message ?: "Pairing failed" })
+                        busy = false
+                    }
+                }) { Text("Connect", color = PrimaryIndigo) }
+            },
+            dismissButton = { TextButton(onClick = { pendingPairingCode = null }) { Text("Cancel") } }
         )
     }
 }

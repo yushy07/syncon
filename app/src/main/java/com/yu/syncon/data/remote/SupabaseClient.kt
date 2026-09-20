@@ -43,6 +43,8 @@ class SupabaseClient(private val sessionStore: SecureSessionStore) {
         val session = sessionStore.load()
         try {
             if (session != null) request("/auth/v1/logout", "POST", JSONObject(), session.accessToken)
+        } catch (_: Exception) {
+            // Signing out locally must still work when the backend is unavailable.
         } finally {
             sessionStore.clear()
         }
