@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "SyncOn — Browser Screen Time",
   "version": "1.0.0",
-  "description": "Private, local-first Chrome screen-time tracking and website limits for SyncOn.",
+  "description": "Private, Android-connected Chrome screen-time tracking and website limits for SyncOn.",
   "permissions": [
     "alarms",
     "idle",
@@ -12,7 +12,7 @@
     "unlimitedStorage"
   ],
   "host_permissions": [
-    "https://nqpristylxavyexqgjtp.supabase.co/*"
+    "https://YOUR_PROJECT_REF.supabase.co/*"
   ],
   "incognito": "split",
   "icons": {

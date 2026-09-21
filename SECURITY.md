@@ -14,7 +14,7 @@ Only the latest commit on `main` is actively maintained.
 
 ## Client security boundary
 
-- Android and Chrome may contain only the Supabase publishable client key.
+- Android and Chrome use only the Supabase publishable client key, supplied from ignored local configuration rather than tracked source.
 - Supabase service-role credentials must remain outside both clients and Git history.
 - Every synchronized row must remain account-scoped through Row Level Security.
 - Pairing requests must remain short-lived and single-use, with backend verification authoritative.

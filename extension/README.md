@@ -4,11 +4,15 @@ The Android-connected Chrome companion for SyncOn. It records only focused domai
 
 ## Load in Chrome
 
-1. Open `chrome://extensions`.
-2. Enable **Developer mode**.
-3. Select **Load unpacked**.
-4. Choose this `extension` folder.
-5. Pin SyncOn from the Chrome toolbar.
+1. Copy `manifest.example.json` to `manifest.json` and replace the placeholder backend host.
+2. Copy `lib/backend-config.example.js` to `lib/backend-config.js` and add the local publishable client configuration.
+3. Open `chrome://extensions`.
+4. Enable **Developer mode**.
+5. Select **Load unpacked**.
+6. Choose this `extension` folder.
+7. Pin SyncOn from the Chrome toolbar.
+
+The real manifest and backend config are ignored by Git so the private project binding is not exposed on GitHub.
 
 The extension works without a build step. On first install it opens a pairing page; scan its one-time QR code from the Android app to activate the extension and begin syncing. Unlike the Android app, a fresh extension does not track or expose its dashboard before this first pairing.
 

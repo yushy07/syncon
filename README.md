@@ -21,7 +21,7 @@ Android works independently. The Chrome extension activates only after it is con
 |---|---:|---|
 | Android app | Yes | Primary app, Android tracking, limits, trends, account and connected-device control |
 | Chrome extension | No, first pairing is required | Focused website tracking, website limits and cross-platform views |
-| Supabase | Required for pairing and cross-device sync | Authentication, device membership, synchronization and private Realtime wakeups |
+| Private Supabase backend | Required for pairing and cross-device sync | Authentication, device membership, synchronization and private Realtime wakeups; backend source is not stored in this repository |
 
 After a browser has been paired successfully, temporary network outages do not stop its local tracking or blocking. Sync resumes when connectivity returns. Revoking the browser from Android locks the extension again.
 
@@ -87,7 +87,7 @@ SyncOn is maintained as a personal project. Play Store, Chrome Web Store and pub
 - Android 12 / API 31 or newer
 - A Chromium browser with Manifest V3 support
 - Node.js 20 or newer for extension checks
-- A linked Supabase project when changing or redeploying the backend
+- Local backend configuration supplied outside Git
 
 ### Android
 
@@ -102,6 +102,16 @@ On Windows:
 The APK is generated under `app/build/outputs/apk/debug/`. On macOS/Linux, use `./gradlew` instead of `.\gradlew.bat`.
 
 Android requires Usage Access for screen-time events and Accessibility access for immediate limit enforcement. The app guides you through these permissions during onboarding.
+
+### Private backend configuration
+
+Live backend identifiers are deliberately excluded from GitHub.
+
+1. Copy `backend.properties.example` to `backend.properties` and enter the local Android values.
+2. Copy `extension/manifest.example.json` to `extension/manifest.json` and replace the placeholder Supabase host.
+3. Copy `extension/lib/backend-config.example.js` to `extension/lib/backend-config.js` and enter the local extension values.
+
+The real `backend.properties`, extension manifest/config, Supabase CLI folder and internal connected-product roadmap are ignored by Git. Keep service-role credentials only in trusted Supabase infrastructure—never in any client configuration.
 
 ### Chrome extension
 
@@ -182,7 +192,7 @@ Important shared rules live in [`shared/`](shared/):
 - [`cross-platform-policy-v1.md`](shared/cross-platform-policy-v1.md) — totals, overlap and conflict rules
 - [`service-mappings-v1.json`](shared/service-mappings-v1.json) — Android package/domain mappings
 
-Backend migrations and the callable contract live in [`supabase/`](supabase/).
+Backend migrations, deployment configuration and operational notes stay local-only and are applied directly to the private Supabase project.
 
 ## Repository layout
 
@@ -190,7 +200,6 @@ Backend migrations and the callable contract live in [`supabase/`](supabase/).
 syncon/
 ├── app/                 Android application, Room schemas and tests
 ├── extension/           Load-unpacked Chrome extension and Node tests
-├── supabase/            Database migrations and backend contract
 ├── shared/              Cross-platform data and product rules
 ├── assets/              Repository and brand artwork
 ├── release/             Local packaging and reference documentation
@@ -206,7 +215,7 @@ syncon/
 - Cloud rows are isolated by account with Row Level Security.
 - Pairing secrets are short-lived, single-use and stored by the backend only as hashes.
 - Private credentials, keystores, local SDK paths, generated APK/AAB files and extension ZIPs must never be committed.
-- Never place a Supabase service-role key in either client. Only the publishable client key belongs in Android or Chrome builds.
+- Android and Chrome use a publishable client key supplied through ignored local configuration. Never place a Supabase service-role key in either client.
 
 See [`release/PRIVACY_POLICY.md`](release/PRIVACY_POLICY.md) for the detailed data description.
 

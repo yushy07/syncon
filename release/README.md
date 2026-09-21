@@ -24,6 +24,8 @@ powershell -ExecutionPolicy Bypass -File release\package-release.ps1 -Version 1.
 
 The extension must be connected to the Android app by QR code before its dashboard or tracking activates.
 
+The packaging command expects the ignored local `extension/manifest.json` and `extension/lib/backend-config.js` files. Use their tracked `.example` templates when configuring a fresh checkout.
+
 ## Reference documents
 
 The privacy, permission, listing and screenshot files in this directory are retained as product documentation and as optional references if distribution is considered later. They are not current publication tasks.

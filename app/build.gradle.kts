@@ -9,6 +9,20 @@ if (releaseKeystorePropertiesFile.exists()) {
 val releaseSigningConfigured = listOf("storeFile", "storePassword", "keyAlias", "keyPassword")
     .all { !releaseKeystoreProperties.getProperty(it).isNullOrBlank() }
 
+val backendProperties = Properties()
+val backendPropertiesFile = rootProject.file("backend.properties")
+if (backendPropertiesFile.exists()) {
+    backendPropertiesFile.inputStream().use(backendProperties::load)
+}
+
+fun backendValue(name: String): String =
+    backendProperties.getProperty(name)
+        ?: providers.environmentVariable(name).orNull
+        ?: ""
+
+fun quotedBuildConfig(value: String): String =
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -30,8 +44,8 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "SUPABASE_URL", "\"https://nqpristylxavyexqgjtp.supabase.co\"")
-        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", "\"sb_publishable_AE1V984zNrbJ3YlnJQjMVg_cW7n7sRW\"")
+        buildConfigField("String", "SUPABASE_URL", quotedBuildConfig(backendValue("SYNCON_SUPABASE_URL")))
+        buildConfigField("String", "SUPABASE_PUBLISHABLE_KEY", quotedBuildConfig(backendValue("SYNCON_SUPABASE_PUBLISHABLE_KEY")))
     }
 
     buildFeatures {
@@ -69,6 +83,9 @@ android {
 
 tasks.register("verifyReleaseReadiness") {
     doLast {
+        check(backendValue("SYNCON_SUPABASE_URL").isNotBlank() && backendValue("SYNCON_SUPABASE_PUBLISHABLE_KEY").isNotBlank()) {
+            "Backend configuration is missing. Copy backend.properties.example to backend.properties and add the private local values."
+        }
         check(releaseSigningConfigured) {
             "Release signing is not configured. Copy release/keystore.properties.example to keystore.properties and add the private upload-key values."
         }

@@ -40,17 +40,18 @@ coverage/
 .env
 .env.*
 !.env.example
+backend.properties
 *.jks
 *.keystore
 keystore.properties
 google-services.json
 
-# Supabase CLI local state
-supabase/.branches/
-supabase/.temp/
-supabase/.env.local
-supabase/.env.*.local
-supabase/.env.keys
+# Local Chrome backend binding
+extension/manifest.json
+extension/lib/backend-config.js
+
+# Backend source and Supabase CLI state stay local-only
+supabase/
 
 # Generated personal release files
 release/artifacts/
@@ -74,3 +75,4 @@ Desktop.ini
 .agents/
 .codex/
 guideline/
+SYNCON_CONNECTED_PRODUCT_ROADMAP.md

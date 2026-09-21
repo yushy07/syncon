@@ -12,7 +12,7 @@ SyncOn tracks time spent on the focused website, shows digital-wellbeing reports
 - `storage`: stores preferences, summaries, pairing/session state, and connection status.
 - `unlimitedStorage`: retains up to three years of user-owned precise intervals in IndexedDB without quota-related loss.
 - `notifications`: warns when a selected website or category budget is nearly exhausted.
-- `https://nqpristylxavyexqgjtp.supabase.co/*`: authenticates the installation and calls only SyncOn's account-scoped pairing/sync endpoints. It also establishes the matching private Realtime connection. No arbitrary website host access is requested.
+- The exact local Supabase project host: authenticates the installation and calls only SyncOn's account-scoped pairing/sync endpoints. It also establishes the matching private Realtime connection. The live hostname is kept in the ignored local manifest; no arbitrary website host access is requested.
 
 ## Remote code
 

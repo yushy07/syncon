@@ -1,0 +1,3 @@
+# Copy this file to backend.properties and keep the real values local.
+SYNCON_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SYNCON_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY

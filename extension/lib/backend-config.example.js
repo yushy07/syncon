@@ -1,6 +1,6 @@
 (function (root) {
   root.SyncOnBackendConfig = Object.freeze({
-    url: "https://nqpristylxavyexqgjtp.supabase.co",
-    publishableKey: "sb_publishable_AE1V984zNrbJ3YlnJQjMVg_cW7n7sRW"
+    url: "https://YOUR_PROJECT_REF.supabase.co",
+    publishableKey: "YOUR_PUBLISHABLE_KEY"
   });
 })(typeof globalThis !== "undefined" ? globalThis : this);
