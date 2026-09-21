@@ -37,3 +37,19 @@ test("automatically categorizes common services", () => {
   assert.equal(C.categoryForDomain("youtube.com"), "Entertainment");
   assert.equal(C.categoryForDomain("docs.google.com"), "Productivity");
 });
+
+test("merges Android and Chrome sources into one logical service", () => {
+  const merged = C.mergeSourceTotals([
+    { sourceIdentifier: "youtube.com", sourceType: "CHROME_DOMAIN", durationMillis: 10_000 },
+    { sourceIdentifier: "com.google.android.youtube", sourceType: "ANDROID_APP", durationMillis: 20_000 }
+  ]);
+  assert.deepEqual(merged, [{ displayName: "YouTube", durationMillis: 30_000, logicalServiceId: "youtube" }]);
+});
+
+test("calculates overlap-adjusted active digital span", () => {
+  assert.equal(C.activeDigitalSpan([
+    { startTimeUtc: 0, endTimeUtc: 10, isDeleted: false },
+    { startTimeUtc: 5, endTimeUtc: 15, isDeleted: false },
+    { startTimeUtc: 20, endTimeUtc: 25, isDeleted: false }
+  ]), 20);
+});

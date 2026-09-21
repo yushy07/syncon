@@ -1,4 +1,4 @@
-importScripts("lib/core.js", "lib/db.js", "lib/backend-config.js", "lib/supabase.js", "lib/sync.js");
+importScripts("lib/core.js", "lib/db.js", "lib/backend-config.js", "lib/supabase.js", "lib/sync.js", "lib/realtime.js");
 
 const C = SyncOnCore;
 const STORAGE_VERSION = 1;
@@ -19,7 +19,7 @@ async function persistActiveSession() {
 
 async function state() {
   const data = await chrome.storage.local.get([
-    "installationId", "settings", "dailyTotals", "remoteDailyTotals", "domains", "limits", "categoryLimits", "dailyStates", "blockEvents"
+    "installationId", "settings", "dailyTotals", "remoteDailyTotals", "domains", "limits", "categoryLimits", "dailyStates", "blockEvents", "sourceMappings"
   ]);
   if (!data.installationId) data.installationId = crypto.randomUUID();
   data.settings ||= { trackingEnabled: true, idleThresholdSeconds: 60, excludedDomains: [] };
@@ -30,6 +30,7 @@ async function state() {
   data.categoryLimits ||= {};
   data.dailyStates ||= {};
   data.blockEvents ||= [];
+  data.sourceMappings ||= {};
   await chrome.storage.local.set({ installationId: data.installationId, settings: data.settings });
   return data;
 }
@@ -213,12 +214,22 @@ async function cleanup() {
   await chrome.storage.local.set({ dailyTotals: data.dailyTotals, dailyStates: data.dailyStates });
 }
 
+async function handleRealtimeWake() {
+  if (active.domain) await commitActive();
+  await SyncOnSync.syncNow();
+}
+
+async function ensureRealtime() {
+  try { await SyncOnRealtime.ensure(handleRealtimeWake); } catch (_) { /* Alarm and manual sync remain the fallback. */ }
+}
+
 chrome.runtime.onInstalled.addListener(async details => {
   await migrateLegacyIntervals();
   await state();
   chrome.idle.setDetectionInterval(60);
   chrome.alarms.create(ALARM_NAME, { periodInMinutes: 0.5 });
   await cleanup();
+  await ensureRealtime();
   if (details.reason === "install") {
     await chrome.tabs.create({ url: chrome.runtime.getURL("onboarding/onboarding.html") });
   }
@@ -230,6 +241,7 @@ chrome.runtime.onStartup.addListener(async () => {
   chrome.alarms.create(ALARM_NAME, { periodInMinutes: 0.5 });
   focusedWindowId = (await chrome.windows.getLastFocused()).id;
   await refreshCurrentTab();
+  await ensureRealtime();
 });
 
 chrome.alarms.onAlarm.addListener(async alarm => {
@@ -250,6 +262,7 @@ chrome.alarms.onAlarm.addListener(async alarm => {
     if (active.domain) await commitActive();
     await SyncOnSync.syncNow();
   }
+  await ensureRealtime();
 });
 
 chrome.tabs.onActivated.addListener(refreshCurrentTab);
@@ -279,6 +292,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         if (active.domain) await commitActive();
         connection = await SyncOnSync.syncNow();
       }
+      await ensureRealtime();
       sendResponse(connection);
     } else if (message.type === "START_PAIRING") {
       const data = await state();
@@ -287,9 +301,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       sendResponse(await SyncOnSync.cancelPairing());
     } else if (message.type === "SYNC_NOW") {
       if (active.domain) await commitActive();
-      sendResponse(await SyncOnSync.syncNow());
+      const result = await SyncOnSync.syncNow();
+      await ensureRealtime();
+      sendResponse(result);
     } else if (message.type === "GET_INTERVAL_STATS") {
       sendResponse({ count: await SyncOnDb.count() });
+    } else if (message.type === "GET_ACTIVE_SPAN") {
+      if (active.domain) await commitActive();
+      sendResponse({
+        milliseconds: await SyncOnDb.activeDigitalSpanForDate(
+          message.usageDate || C.usageDate(),
+          message.scope !== "CHROME"
+        )
+      });
     } else if (message.type === "EXPORT_BACKUP") {
       const data = await state();
       sendResponse({
@@ -381,3 +405,4 @@ async function restoreWorkerSession() {
 }
 
 restoreWorkerSession();
+ensureRealtime();

@@ -19,24 +19,21 @@ function toast(message) {
 }
 
 function totalsForDate(date) {
-  const totals = { ...(appState.dailyTotals[date] || {}) };
-  if (platformScope === "ALL") {
-    Object.entries(appState.remoteDailyTotals?.[date] || {}).forEach(([source, duration]) => {
-      totals[source] = (totals[source] || 0) + duration;
-    });
-  }
+  const entries = Object.entries(appState.dailyTotals[date] || {}).map(([sourceIdentifier, durationMillis]) => ({ sourceIdentifier, sourceType: "CHROME_DOMAIN", durationMillis }));
+  if (platformScope === "ALL") Object.entries(appState.remoteDailyTotals?.[date] || {}).forEach(([sourceIdentifier, durationMillis]) => entries.push({ sourceIdentifier, sourceType: "ANDROID_APP", durationMillis }));
+  return Object.fromEntries(C.mergeSourceTotals(entries).map(item => [item.displayName, item.durationMillis]));
+}
+
+function localTodayTotals() {
+  const totals = { ...(appState.dailyTotals[C.usageDate()] || {}) };
+  if (live.active.domain && live.active.startedAt) totals[live.active.domain] = (totals[live.active.domain] || 0) + Date.now() - live.active.startedAt;
   return totals;
 }
 
 function todayTotals() {
-  const totals = { ...(appState.dailyTotals[C.usageDate()] || {}) };
-  if (platformScope === "ALL") {
-    Object.entries(appState.remoteDailyTotals?.[C.usageDate()] || {}).forEach(([source, duration]) => {
-      totals[source] = (totals[source] || 0) + duration;
-    });
-  }
-  if (live.active.domain && live.active.startedAt) totals[live.active.domain] = (totals[live.active.domain] || 0) + Date.now() - live.active.startedAt;
-  return totals;
+  const entries = Object.entries(localTodayTotals()).map(([sourceIdentifier, durationMillis]) => ({ sourceIdentifier, sourceType: "CHROME_DOMAIN", durationMillis }));
+  if (platformScope === "ALL") Object.entries(appState.remoteDailyTotals?.[C.usageDate()] || {}).forEach(([sourceIdentifier, durationMillis]) => entries.push({ sourceIdentifier, sourceType: "ANDROID_APP", durationMillis }));
+  return Object.fromEntries(C.mergeSourceTotals(entries).map(item => [item.displayName, item.durationMillis]));
 }
 
 function domainRows(totals, max = Infinity) {
@@ -52,7 +49,7 @@ function domainRows(totals, max = Infinity) {
     </div>`).join("");
 }
 
-function renderOverview() {
+async function renderOverview() {
   const totals = todayTotals();
   const sorted = Object.entries(totals).sort((a, b) => b[1] - a[1]);
   const total = sorted.reduce((sum, item) => sum + item[1], 0);
@@ -74,6 +71,8 @@ function renderOverview() {
   }
   $("#cleanStreak").textContent = String(streak);
   $("#todayDomains").innerHTML = domainRows(totals, 8);
+  const span = await chrome.runtime.sendMessage({ type: "GET_ACTIVE_SPAN", usageDate: C.usageDate(), scope: platformScope });
+  $("#activeSpan").textContent = C.formatDuration(span?.milliseconds || 0);
 
   const categories = {};
   for (const [domain, duration] of sorted) {
@@ -88,7 +87,7 @@ function renderOverview() {
 function renderWebsites() {
   const query = $("#search").value.toLowerCase();
   const category = $("#categoryFilter").value;
-  const totals = todayTotals();
+  const totals = localTodayTotals();
   const known = new Set([...Object.keys(appState.domains), ...Object.keys(totals), ...Object.keys(appState.limits)]);
   const entries = [...known].filter(domain => domain.includes(query) && (category === "All" || (appState.domains[domain]?.category || "Other") === category)).sort((a, b) => (totals[b] || 0) - (totals[a] || 0));
   $("#websiteList").innerHTML = entries.map(domain => {
@@ -131,6 +130,7 @@ function renderSettings() {
     <div class="data-stat"><span>Schema</span><strong>2</strong></div>
     <div class="data-stat"><span>Installation</span><strong title="${escapeHtml(appState.installationId)}">${escapeHtml(appState.installationId.slice(0, 8))}…</strong></div>
     <div class="data-stat"><span>Sync state</span><strong>${escapeHtml(appState.connection?.status || "LOCAL_ONLY")}</strong></div>
+    <div class="data-stat"><span>Setting conflicts</span><strong>${Number(appState.connection?.conflictCount || 0)}</strong></div>
     <div class="data-stat"><span>Last sync</span><strong>${appState.connection?.lastSyncedAt ? new Date(appState.connection.lastSyncedAt).toLocaleString() : "Not yet"}</strong></div>`;
 }
 
@@ -139,7 +139,7 @@ function renderStatus() {
   $("#trackingStatus").innerHTML = `<i class="status-dot ${enabled ? "" : "paused"}"></i><span>${enabled ? "Tracking active" : "Tracking paused"}</span>`;
 }
 
-function renderAll() { renderStatus(); renderOverview(); renderWebsites(); renderTrends(); renderSettings(); }
+async function renderAll() { renderStatus(); await renderOverview(); renderWebsites(); renderTrends(); renderSettings(); }
 
 function openLimit(domain) {
   editingDomain = domain;

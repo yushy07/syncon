@@ -5,7 +5,7 @@
   "description": "Local-first Chrome screen-time tracker for SyncOn",
   "scripts": {
     "test": "node --test tests/*.test.js",
-    "check": "node --check background.js && node --check lib/db.js && node --check lib/supabase.js && node --check lib/sync.js && node --check onboarding/onboarding.js && node --check popup/popup.js && node --check dashboard/dashboard.js && node --check blocked/blocked.js"
+    "check": "node --check background.js && node --check lib/db.js && node --check lib/supabase.js && node --check lib/sync.js && node --check lib/realtime.js && node --check onboarding/onboarding.js && node --check popup/popup.js && node --check dashboard/dashboard.js && node --check blocked/blocked.js"
   },
   "dependencies": {
     "qrcode-generator": "1.4.4"

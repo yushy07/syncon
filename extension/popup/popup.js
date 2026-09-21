@@ -28,11 +28,11 @@ async function render() {
   }
   const connected = ["CONNECTED", "SYNCING", "OFFLINE"].includes(connection.status);
   if (!connected) selectedScope = "CHROME";
-  const totals = { ...localTotals };
+  let totals = { ...localTotals };
   if (connected && selectedScope === "ALL") {
-    Object.entries(live.data.remoteDailyTotals?.[today] || {}).forEach(([source, duration]) => {
-      totals[source] = (totals[source] || 0) + duration;
-    });
+    const entries = Object.entries(localTotals).map(([sourceIdentifier, durationMillis]) => ({ sourceIdentifier, sourceType: "CHROME_DOMAIN", durationMillis }));
+    Object.entries(live.data.remoteDailyTotals?.[today] || {}).forEach(([sourceIdentifier, durationMillis]) => entries.push({ sourceIdentifier, sourceType: "ANDROID_APP", durationMillis }));
+    totals = Object.fromEntries(C.mergeSourceTotals(entries).map(item => [item.displayName, item.durationMillis]));
   }
   const total = Object.values(totals).reduce((sum, value) => sum + value, 0);
   document.querySelector("#total").textContent = C.formatDuration(total);

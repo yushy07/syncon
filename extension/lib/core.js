@@ -5,6 +5,18 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   const RESET_HOUR = 4;
   const DAY_MS = 86_400_000;
+  const LOGICAL_SERVICES = [
+    { id: "youtube", name: "YouTube", android: ["com.google.android.youtube"], chrome: ["youtube.com", "youtu.be"] },
+    { id: "instagram", name: "Instagram", android: ["com.instagram.android"], chrome: ["instagram.com"] },
+    { id: "facebook", name: "Facebook", android: ["com.facebook.katana"], chrome: ["facebook.com"] },
+    { id: "reddit", name: "Reddit", android: ["com.reddit.frontpage"], chrome: ["reddit.com"] },
+    { id: "x-twitter", name: "X", android: ["com.twitter.android"], chrome: ["x.com", "twitter.com"] },
+    { id: "netflix", name: "Netflix", android: ["com.netflix.mediaclient"], chrome: ["netflix.com"] },
+    { id: "spotify", name: "Spotify", android: ["com.spotify.music"], chrome: ["spotify.com", "open.spotify.com"] },
+    { id: "whatsapp", name: "WhatsApp", android: ["com.whatsapp"], chrome: ["web.whatsapp.com"] },
+    { id: "discord", name: "Discord", android: ["com.discord"], chrome: ["discord.com"] },
+    { id: "github", name: "GitHub", android: ["com.github.android"], chrome: ["github.com"] }
+  ];
 
   function usageDate(timestamp = Date.now()) {
     const date = new Date(timestamp);
@@ -99,5 +111,41 @@
     };
   }
 
-  return { RESET_HOUR, usageDate, domainFromUrl, categoryForDomain, stableId, formatDuration, recentUsageDates, splitUsageInterval, evaluateLimit };
+  function logicalServiceFor(sourceIdentifier, sourceType = "CHROME_DOMAIN") {
+    const field = sourceType === "ANDROID_APP" ? "android" : "chrome";
+    const service = LOGICAL_SERVICES.find(item => item[field].includes(sourceIdentifier));
+    return service ? { id: service.id, name: service.name } : null;
+  }
+
+  function mergeSourceTotals(entries) {
+    const merged = {};
+    entries.forEach(({ sourceIdentifier, sourceType, durationMillis }) => {
+      const service = logicalServiceFor(sourceIdentifier, sourceType);
+      const key = service?.id || `${sourceType}:${sourceIdentifier}`;
+      merged[key] ||= { displayName: service?.name || sourceIdentifier, durationMillis: 0, logicalServiceId: service?.id || null };
+      merged[key].durationMillis += Number(durationMillis) || 0;
+    });
+    return Object.values(merged).sort((a, b) => b.durationMillis - a.durationMillis);
+  }
+
+  function activeDigitalSpan(intervals) {
+    const ranges = intervals
+      .filter(item => !item.isDeleted && Number.isFinite(item.startTimeUtc) && Number.isFinite(item.endTimeUtc) && item.endTimeUtc > item.startTimeUtc)
+      .map(item => [item.startTimeUtc, item.endTimeUtc])
+      .sort((a, b) => a[0] - b[0]);
+    let total = 0;
+    let start = null;
+    let end = null;
+    ranges.forEach(([nextStart, nextEnd]) => {
+      if (start === null) { start = nextStart; end = nextEnd; return; }
+      if (nextStart <= end) { end = Math.max(end, nextEnd); return; }
+      total += end - start;
+      start = nextStart;
+      end = nextEnd;
+    });
+    if (start !== null) total += end - start;
+    return total;
+  }
+
+  return { RESET_HOUR, LOGICAL_SERVICES, usageDate, domainFromUrl, categoryForDomain, stableId, formatDuration, recentUsageDates, splitUsageInterval, evaluateLimit, logicalServiceFor, mergeSourceTotals, activeDigitalSpan };
 });

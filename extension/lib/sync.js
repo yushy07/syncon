@@ -116,8 +116,14 @@
   async function pushIntervals() {
     let pending = await db.getPending(250);
     while (pending.length) {
-      await api.rpc("sync_push_intervals_v2", { p_intervals: pending.map(intervalPayload) });
-      await db.markSynced(pending.map(item => item.recordId));
+      let result;
+      try {
+        result = await api.rpc("sync_push_intervals_v3", { p_intervals: pending.map(intervalPayload) });
+      } catch (error) {
+        await db.recordAttempts(pending, "activity_intervals", error);
+        throw error;
+      }
+      await db.markAcknowledged((result.acknowledgements || []).filter(item => item.status === "ACCEPTED"));
       if (pending.length < 250) break;
       pending = await db.getPending(250);
     }
@@ -137,7 +143,9 @@
       target_identifier: domain, daily_limit_minutes: value.limitMinutes || null,
       blocking_style: value.style || "STRICT", snooze_minutes: value.snoozeMinutes || 5,
       is_enabled: Boolean(value.enabled), client_updated_at: iso(value.updatedAtUtc || 0),
-      local_revision: value.localRevision || 1, is_deleted: Boolean(value.isDeleted)
+      local_revision: value.localRevision || 1,
+      base_server_revision: Number(value.serverRevision || 0),
+      is_deleted: Boolean(value.isDeleted)
     }));
     Object.entries(local.categoryLimits || {}).forEach(([category, value]) => limits.push({
       record_id: value.recordId || `shared-category-limit:${category}`,
@@ -145,7 +153,9 @@
       target_identifier: category, daily_limit_minutes: value.limitMinutes || null,
       blocking_style: value.style || "STRICT", snooze_minutes: value.snoozeMinutes || 5,
       is_enabled: Boolean(value.enabled), client_updated_at: iso(value.updatedAtUtc || 0),
-      local_revision: value.localRevision || 1, is_deleted: Boolean(value.isDeleted)
+      local_revision: value.localRevision || 1,
+      base_server_revision: Number(value.serverRevision || 0),
+      is_deleted: Boolean(value.isDeleted)
     }));
     const events = (local.blockEvents || []).map(value => ({
       record_id: value.recordId, installation_id: local.installationId,
@@ -155,13 +165,57 @@
       extra_minutes: value.extraMinutes || 0, local_revision: value.localRevision || 1,
       is_deleted: Boolean(value.isDeleted)
     }));
-    await api.rpc("sync_push_state_v2", {
-      p_sources: sources, p_limits: limits, p_block_events: events, p_source_mappings: []
+    const mappings = core.LOGICAL_SERVICES.flatMap(service => service.chrome.map(domain => ({
+      record_id: `default:CHROME_DOMAIN:${domain}`,
+      source_type: "CHROME_DOMAIN",
+      source_identifier: domain,
+      logical_service_id: service.id,
+      client_updated_at: iso(0),
+      local_revision: 1,
+      is_deleted: false
+    })));
+    const result = await api.rpc("sync_push_state_v3", {
+      p_sources: sources, p_limits: limits, p_block_events: events, p_source_mappings: mappings
     });
+    const acknowledged = new Map((result.limit_acknowledgements || []).map(item => [item.record_id, Number(item.server_revision)]));
+    Object.entries(local.limits || {}).forEach(([domain, value]) => {
+      const revision = acknowledged.get(value.recordId || `chrome-domain-limit:${domain}`);
+      if (revision) Object.assign(value, { serverRevision: revision, syncState: "SYNCED" });
+    });
+    Object.entries(local.categoryLimits || {}).forEach(([category, value]) => {
+      const revision = acknowledged.get(value.recordId || `shared-category-limit:${category}`);
+      if (revision) Object.assign(value, { serverRevision: revision, syncState: "SYNCED" });
+    });
+    await db.resolveConflicts([...acknowledged.keys()]);
+    const conflicts = (result.conflicts || []).map(item => ({
+      recordId: item.record_id,
+      collection: "limit_settings",
+      localPayload: JSON.stringify(limits.find(limit => limit.record_id === item.record_id) || {}),
+      serverPayload: JSON.stringify(item.server_record || {}),
+      serverRevision: Number(item.server_record?.server_revision || 0),
+      detectedAtUtc: Date.now(),
+      resolvedAtUtc: null
+    }));
+    await db.putConflicts(conflicts);
+    for (const item of result.conflicts || []) applyLimitRecord(item.server_record, local.limits, local.categoryLimits);
+    await chrome.storage.local.set({ limits: local.limits, categoryLimits: local.categoryLimits });
+  }
+
+  function applyLimitRecord(item, limits, categoryLimits) {
+    if (!item) return;
+    const value = {
+      recordId: item.record_id, enabled: Boolean(item.is_enabled),
+      limitMinutes: item.daily_limit_minutes, style: item.blocking_style,
+      snoozeMinutes: item.snooze_minutes, updatedAtUtc: Date.parse(item.client_updated_at),
+      localRevision: Number(item.local_revision), serverRevision: Number(item.server_revision),
+      syncState: "SYNCED", isDeleted: Boolean(item.is_deleted)
+    };
+    if (item.target_type === "CATEGORY") categoryLimits[item.target_identifier] = { ...value, category: item.target_identifier };
+    if (item.target_type === "SOURCE" && item.source_platform === "CHROME") limits[item.target_identifier] = value;
   }
 
   async function applyPull(payload) {
-    const stored = await chrome.storage.local.get(["installationId", "domains", "limits", "categoryLimits", "blockEvents"]);
+    const stored = await chrome.storage.local.get(["installationId", "domains", "limits", "categoryLimits", "blockEvents", "sourceMappings"]);
     const domains = stored.domains || {};
     const limits = stored.limits || {};
     const categoryLimits = stored.categoryLimits || {};
@@ -175,17 +229,7 @@
         syncState: "SYNCED"
       };
     });
-    (payload.limits || []).forEach(item => {
-      const value = {
-        recordId: item.record_id, enabled: Boolean(item.is_enabled),
-        limitMinutes: item.daily_limit_minutes, style: item.blocking_style,
-        snoozeMinutes: item.snooze_minutes, updatedAtUtc: Date.parse(item.client_updated_at),
-        localRevision: Number(item.local_revision), serverRevision: Number(item.server_revision),
-        syncState: "SYNCED", isDeleted: Boolean(item.is_deleted)
-      };
-      if (item.target_type === "CATEGORY") categoryLimits[item.target_identifier] = { ...value, category: item.target_identifier };
-      if (item.target_type === "SOURCE" && item.source_platform === "CHROME") limits[item.target_identifier] = value;
-    });
+    (payload.limits || []).forEach(item => applyLimitRecord(item, limits, categoryLimits));
     const eventIds = new Set(blockEvents.map(item => item.recordId));
     (payload.block_events || []).filter(item => item.source_platform === "CHROME").forEach(item => {
       if (!eventIds.has(item.record_id)) blockEvents.push({
@@ -196,8 +240,14 @@
       });
     });
     const intervalRecords = (payload.intervals || []).map(camelInterval);
-    await db.putIntervals(intervalRecords.filter(item => item.sourcePlatform === "CHROME" && item.installationId === stored.installationId));
-    await db.putRemoteIntervals(intervalRecords.filter(item => !(item.sourcePlatform === "CHROME" && item.installationId === stored.installationId)));
+    const localIntervals = intervalRecords.filter(item => item.sourcePlatform === "CHROME" && item.installationId === stored.installationId);
+    const remoteIntervals = intervalRecords.filter(item => !(item.sourcePlatform === "CHROME" && item.installationId === stored.installationId));
+    const sourceMappings = { ...(stored.sourceMappings || {}) };
+    (payload.source_mappings || []).filter(item => !item.is_deleted).forEach(item => {
+      sourceMappings[`${item.source_type}:${item.source_identifier}`] = item.logical_service_id;
+    });
+    const pulledState = { domains, limits, categoryLimits, blockEvents, sourceMappings };
+    await db.applySyncPage(localIntervals, remoteIntervals, payload.next_revision, pulledState);
     const dailyTotals = {};
     (await db.getAll()).filter(item => !item.isDeleted).forEach(item => {
       dailyTotals[item.usageDate] ||= {};
@@ -208,26 +258,31 @@
       remoteDailyTotals[item.usageDate] ||= {};
       remoteDailyTotals[item.usageDate][item.sourceIdentifier] = (remoteDailyTotals[item.usageDate][item.sourceIdentifier] || 0) + item.durationMillis;
     });
-    await chrome.storage.local.set({ domains, limits, categoryLimits, blockEvents, dailyTotals, remoteDailyTotals });
+    await chrome.storage.local.set({ domains, limits, categoryLimits, blockEvents, sourceMappings, dailyTotals, remoteDailyTotals });
   }
 
   async function pullAll() {
-    let cursor = Number((await chrome.storage.local.get("syncCursor")).syncCursor || 0);
+    let cursor = Number(await db.getMeta("accountCursor", 0));
     let page;
     do {
       page = await api.rpc("sync_pull_v2", { p_after_revision: cursor, p_limit: 1000 });
       await applyPull(page);
       cursor = Number(page.next_revision || cursor);
-      await chrome.storage.local.set({ syncCursor: cursor });
     } while (page.has_more);
+  }
+
+  async function hydrateDurableState() {
+    const state = await db.getMeta("pulledState", null);
+    if (state) await chrome.storage.local.set(state);
   }
 
   async function syncNow() {
     const connection = await getConnection();
     if (!["CONNECTED", "SYNCING", "OFFLINE"].includes(connection.status)) return connection;
-    const local = await chrome.storage.local.get(["installationId", "domains", "limits", "categoryLimits", "blockEvents"]);
     try {
       await setConnection({ status: "SYNCING", lastError: null });
+      await hydrateDurableState();
+      const local = await chrome.storage.local.get(["installationId", "domains", "limits", "categoryLimits", "blockEvents"]);
       await api.rpc("sync_register_installation_v2", {
         p_installation_id: local.installationId, p_platform: "CHROME",
         p_display_name: "Chrome browser", p_client_version: chrome.runtime.getManifest().version
@@ -235,12 +290,13 @@
       await pushIntervals();
       await pushState(local);
       await pullAll();
-      return setConnection({ status: "CONNECTED", lastSyncedAt: Date.now(), lastError: null });
+      const conflicts = await db.getConflicts();
+      return setConnection({ status: "CONNECTED", lastSyncedAt: Date.now(), lastError: null, conflictCount: conflicts.length });
     } catch (error) {
       const revoked = /Connected SyncOn account required/i.test(error.message);
       return setConnection({ status: revoked ? "REVOKED" : "OFFLINE", lastError: error.message });
     }
   }
 
-  root.SyncOnSync = { getConnection, startPairing, pollPairing, cancelPairing, syncNow };
+  root.SyncOnSync = { getConnection, startPairing, pollPairing, cancelPairing, syncNow, hydrateDurableState };
 })(typeof globalThis !== "undefined" ? globalThis : this);

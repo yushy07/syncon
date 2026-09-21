@@ -32,6 +32,7 @@
         <article class="card metric-card"><span class="muted">Current focus</span><strong id="currentDomain">None</strong><span id="currentDuration" class="muted">Waiting for activity</span></article>
         <article class="card metric-card"><span class="muted">Most used</span><strong id="topDomain">—</strong><span id="topDuration" class="muted">No usage yet</span></article>
         <article class="card metric-card"><span class="muted">Clean-day streak</span><strong id="cleanStreak" class="metric">0</strong><span class="muted">days without a block</span></article>
+        <article class="card metric-card"><span class="muted">Active digital span</span><strong id="activeSpan" class="metric">0m</strong><span class="muted">Overlap counted once</span></article>
       </div>
       <div class="content-grid">
         <article class="card panel"><div class="row between"><h2>Today’s websites</h2><button class="text-button" data-go="websites">Manage limits</button></div><div id="todayDomains"></div></article>
@@ -49,8 +50,8 @@
 
     <section id="trends" class="view">
       <div class="row between toolbar"><div class="segmented"><button data-days="7" class="active">7 days</button><button data-days="14">14 days</button><button data-days="30">30 days</button></div></div>
-      <article class="card panel"><h2>Daily Chrome time</h2><div id="trendChart" class="bars"></div></article>
-      <article class="card panel"><h2>Top websites in this period</h2><div id="trendDomains"></div></article>
+      <article class="card panel"><h2>Daily selected-device time</h2><div id="trendChart" class="bars"></div></article>
+      <article class="card panel"><h2>Top sources in this period</h2><div id="trendDomains"></div></article>
     </section>
 
     <section id="settings" class="view">
