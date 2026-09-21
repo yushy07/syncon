@@ -23,8 +23,7 @@
         <div id="status" class="status-card" role="status">Preparing a secure pairing code…</div>
         <div class="actions">
           <button id="refresh" class="pill secondary" hidden>New code</button>
-          <button id="localOnly" class="pill secondary">Continue locally</button>
-          <button id="dashboard" class="pill">Continue to dashboard</button>
+          <button id="dashboard" class="pill" hidden>Open connected dashboard</button>
         </div>
       </div>
       <div class="qr-panel">
@@ -33,9 +32,10 @@
         <span id="expires" class="muted">Valid for 10 minutes</span>
       </div>
     </section>
-    <p class="privacy">Local tracking keeps working even when your phone is offline. Sync resumes automatically when the connection returns.</p>
+    <p class="privacy">The extension activates only after this first connection. Once paired, temporary offline use is supported and sync resumes automatically.</p>
   </main>
   <script src="../lib/qrcode.js"></script>
+  <script src="../lib/core.js"></script>
   <script src="onboarding.js"></script>
 </body>
 </html>

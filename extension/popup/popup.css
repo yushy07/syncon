@@ -1,5 +1,9 @@
 body { width: 370px; min-height: 500px; }
 main { padding: 18px; display: grid; gap: 18px; }
+.pairing-required { min-height: 500px; align-content: start; }
+.pairing-prompt { margin-top: 42px; padding: 28px 22px; display: grid; gap: 14px; text-align: center; }
+.pairing-prompt h1 { margin: 0; font-size: 30px; line-height: 1.05; letter-spacing: -.04em; }
+.pairing-prompt .pill { justify-self: center; margin-top: 6px; }
 .hero { padding: 22px; display: grid; gap: 10px; background: linear-gradient(145deg, #fff 20%, #f1edff); }
 .section-title { margin-bottom: 9px; }
 .domain-list { overflow: hidden; box-shadow: none; }

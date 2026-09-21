@@ -154,10 +154,12 @@ function openLimit(domain) {
 }
 
 async function load() {
-  const [liveState, connection] = await Promise.all([
-    chrome.runtime.sendMessage({ type: "GET_LIVE_STATE" }),
-    chrome.runtime.sendMessage({ type: "GET_CONNECTION" })
-  ]);
+  const connection = await chrome.runtime.sendMessage({ type: "GET_CONNECTION" });
+  if (!C.isExtensionActivated(connection)) {
+    location.replace(chrome.runtime.getURL("onboarding/onboarding.html"));
+    return;
+  }
+  const liveState = await chrome.runtime.sendMessage({ type: "GET_LIVE_STATE" });
   live = liveState;
   appState = live.data;
   appState.connection = connection;

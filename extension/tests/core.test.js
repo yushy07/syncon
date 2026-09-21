@@ -53,3 +53,11 @@ test("calculates overlap-adjusted active digital span", () => {
     { startTimeUtc: 20, endTimeUtc: 25, isDeleted: false }
   ]), 20);
 });
+
+test("activates the extension only after Android pairing", () => {
+  assert.equal(C.isExtensionActivated({ status: "LOCAL_ONLY" }), false);
+  assert.equal(C.isExtensionActivated({ status: "PAIRING" }), false);
+  assert.equal(C.isExtensionActivated({ status: "CONNECTED", accountId: "account-1" }), true);
+  assert.equal(C.isExtensionActivated({ status: "OFFLINE", accountId: "account-1" }), true);
+  assert.equal(C.isExtensionActivated({ status: "REVOKED", accountId: "account-1" }), false);
+});

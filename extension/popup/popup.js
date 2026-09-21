@@ -21,6 +21,10 @@ async function render() {
     chrome.runtime.sendMessage({ type: "GET_LIVE_STATE" }),
     chrome.runtime.sendMessage({ type: "GET_CONNECTION" })
   ]);
+  const activated = C.isExtensionActivated(connection);
+  document.querySelector("#pairingRequired").hidden = activated;
+  document.querySelector("#extensionApp").hidden = !activated;
+  if (!activated) return;
   const today = C.usageDate();
   const localTotals = { ...(live.data.dailyTotals[today] || {}) };
   if (live.active.domain && live.active.startedAt) {
@@ -61,5 +65,6 @@ document.querySelector("#toggle").addEventListener("click", async event => {
 });
 document.querySelector("#dashboard").addEventListener("click", () => chrome.runtime.openOptionsPage());
 document.querySelector("#connection").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("onboarding/onboarding.html") }));
+document.querySelector("#connectPhone").addEventListener("click", () => chrome.tabs.create({ url: chrome.runtime.getURL("onboarding/onboarding.html") }));
 document.querySelectorAll("[data-scope]").forEach(button => button.addEventListener("click", () => { selectedScope = button.dataset.scope; render(); }));
 render();

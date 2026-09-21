@@ -147,5 +147,12 @@
     return total;
   }
 
-  return { RESET_HOUR, LOGICAL_SERVICES, usageDate, domainFromUrl, categoryForDomain, stableId, formatDuration, recentUsageDates, splitUsageInterval, evaluateLimit, logicalServiceFor, mergeSourceTotals, activeDigitalSpan };
+  function isExtensionActivated(connection) {
+    return Boolean(
+      connection?.accountId &&
+      ["CONNECTED", "SYNCING", "OFFLINE"].includes(connection.status)
+    );
+  }
+
+  return { RESET_HOUR, LOGICAL_SERVICES, usageDate, domainFromUrl, categoryForDomain, stableId, formatDuration, recentUsageDates, splitUsageInterval, evaluateLimit, logicalServiceFor, mergeSourceTotals, activeDigitalSpan, isExtensionActivated };
 });

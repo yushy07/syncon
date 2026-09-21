@@ -8,7 +8,16 @@
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
-  <main>
+  <main id="pairingRequired" class="pairing-required" hidden>
+    <div class="brand"><img class="mark" src="../assets/icon-32.png" alt=""><span>SyncOn</span></div>
+    <section class="card pairing-prompt">
+      <div class="eyebrow">Android connection required</div>
+      <h1>Scan once to activate</h1>
+      <p class="muted">Open the pairing code, then scan it from SyncOn on your Android phone.</p>
+      <button id="connectPhone" class="pill">Show pairing QR</button>
+    </section>
+  </main>
+  <main id="extensionApp">
     <header class="row between">
       <div class="brand"><img class="mark" src="../assets/icon-32.png" alt=""><span>SyncOn</span></div>
       <span id="status" class="row muted"><i class="status-dot"></i><span>Tracking</span></span>

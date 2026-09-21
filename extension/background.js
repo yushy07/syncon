@@ -71,6 +71,11 @@ function trackable(domain, settings) {
 
 async function commitActive(endAt = Date.now()) {
   if (!active.domain || !active.startedAt || endAt <= active.startedAt) return;
+  if (!C.isExtensionActivated(await SyncOnSync.getConnection())) {
+    active = { tabId: null, windowId: null, domain: null, startedAt: null, url: null };
+    await persistActiveSession();
+    return;
+  }
   const data = await state();
   if (!trackable(active.domain, data.settings)) {
     active.startedAt = endAt;
@@ -120,6 +125,10 @@ async function stopActive(endAt = Date.now()) {
 
 async function beginTab(tab) {
   await stopActive();
+  if (!C.isExtensionActivated(await SyncOnSync.getConnection())) {
+    if (tab?.id) await chrome.action.setBadgeText({ tabId: tab.id, text: "" });
+    return;
+  }
   const data = await state();
   const domain = C.domainFromUrl(tab?.url || "");
   if (isIdle || focusedWindowId === chrome.windows.WINDOW_ID_NONE || !trackable(domain, data.settings)) return;
@@ -142,6 +151,7 @@ async function usedToday(domain, data) {
 
 async function enforce(tab, suppliedState) {
   if (!tab?.id || !active.domain) return;
+  if (!C.isExtensionActivated(await SyncOnSync.getConnection())) return stopActive();
   const data = suppliedState || await state();
   const limit = data.limits[active.domain];
   const category = data.domains[active.domain]?.category || C.categoryForDomain(active.domain);
@@ -357,6 +367,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       await chrome.storage.local.set({ dailyTotals: {}, dailyStates: {} });
       sendResponse({ ok: true });
     } else if (message.type === "SET_TRACKING") {
+      const connection = await SyncOnSync.getConnection();
+      if (!C.isExtensionActivated(connection)) {
+        sendResponse({ ok: false, error: "Connect this extension to the SyncOn Android app first." });
+        return;
+      }
       const data = await state();
       data.settings.trackingEnabled = Boolean(message.enabled);
       await chrome.storage.local.set({ settings: data.settings });

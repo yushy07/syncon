@@ -23,14 +23,20 @@ function render(connection) {
     expiresNode.textContent = `Expires in about ${minutes} minute${minutes === 1 ? "" : "s"}`;
     return;
   }
-  if (["CONNECTED", "SYNCING"].includes(status)) {
+  if (SyncOnCore.isExtensionActivated(connection)) {
     qrNode.className = "qr complete";
     qrNode.textContent = "✓";
     statusNode.classList.add("connected");
-    statusNode.textContent = status === "SYNCING" ? "Connected — bringing your devices up to date…" : "Connected. Chrome and Android will now sync automatically.";
+    statusNode.textContent = status === "SYNCING"
+      ? "Connected — bringing your devices up to date…"
+      : status === "OFFLINE"
+        ? "Connected. Sync is temporarily offline and will resume automatically."
+        : "Connected. Chrome and Android will now sync automatically.";
     expiresNode.textContent = connection.lastSyncedAt ? `Last synced ${new Date(connection.lastSyncedAt).toLocaleTimeString()}` : "Ready to sync";
+    document.querySelector("#dashboard").hidden = false;
     return;
   }
+  document.querySelector("#dashboard").hidden = true;
   statusNode.classList.add("error");
   statusNode.textContent = status === "OFFLINE" ? "The connection is offline. Local tracking is still working." : connection.lastError || "This pairing code is no longer active.";
   refreshButton.hidden = false;
@@ -47,10 +53,6 @@ async function load({ forceNew = false } = {}) {
 }
 
 refreshButton.addEventListener("click", () => load({ forceNew: true }));
-document.querySelector("#localOnly").addEventListener("click", async () => {
-  await chrome.runtime.sendMessage({ type: "CANCEL_PAIRING" });
-  await chrome.runtime.openOptionsPage();
-});
 document.querySelector("#dashboard").addEventListener("click", () => chrome.runtime.openOptionsPage());
 timer = setInterval(async () => render(await chrome.runtime.sendMessage({ type: "GET_CONNECTION" })), 2500);
 window.addEventListener("beforeunload", () => clearInterval(timer));
