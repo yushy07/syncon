@@ -19,24 +19,26 @@
   </main>
   <main id="extensionApp">
     <header class="row between">
-      <div class="brand"><img class="mark" src="../assets/icon-32.png" alt=""><span>SyncOn</span></div>
-      <span id="status" class="row muted"><i class="status-dot"></i><span>Tracking</span></span>
+      <div class="screen-heading"><strong>Today</strong><small>4:00 AM – 4:00 AM</small></div>
+      <span id="status" class="status-chip"><i class="status-dot"></i><span>Tracking</span></span>
     </header>
-
-    <section class="hero card">
-      <div class="eyebrow">Chrome today</div>
-      <div id="total" class="metric">0m</div>
-      <div id="current" class="muted">Waiting for an active website</div>
-    </section>
 
     <div id="scopeToggle" class="scope-toggle" hidden>
       <button data-scope="ALL" class="active">All</button>
       <button data-scope="CHROME">Chrome</button>
     </div>
 
+    <section class="hero card">
+      <div class="hero-label">Screen time</div>
+      <div id="total" class="metric">0m</div>
+      <div id="current" class="muted">Waiting for an active website</div>
+      <p class="tagline">“Small changes. A brighter tomorrow.”</p>
+    </section>
+
     <button id="connection" class="connection card" type="button">
-      <span><strong>Android sync</strong><small id="connectionDetail" class="muted">Checking connection…</small></span>
-      <span aria-hidden="true">→</span>
+      <span class="connection-icon" aria-hidden="true">↻</span>
+      <span class="connection-copy"><strong>Connected devices</strong><small id="connectionDetail" class="muted">Checking connection…</small></span>
+      <span class="chevron" aria-hidden="true">›</span>
     </button>
 
     <section>
@@ -45,7 +47,7 @@
     </section>
 
     <footer class="row">
-      <button id="toggle" class="pill secondary">Pause tracking</button>
+      <button id="toggle" class="pill outlined">Pause tracking</button>
       <button id="dashboard" class="pill">Open dashboard</button>
     </footer>
   </main>

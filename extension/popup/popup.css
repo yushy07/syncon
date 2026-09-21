@@ -1,20 +1,29 @@
-body { width: 370px; min-height: 500px; }
-main { padding: 18px; display: grid; gap: 18px; }
-.pairing-required { min-height: 500px; align-content: start; }
-.pairing-prompt { margin-top: 42px; padding: 28px 22px; display: grid; gap: 14px; text-align: center; }
-.pairing-prompt h1 { margin: 0; font-size: 30px; line-height: 1.05; letter-spacing: -.04em; }
-.pairing-prompt .pill { justify-self: center; margin-top: 6px; }
-.hero { padding: 22px; display: grid; gap: 10px; background: linear-gradient(145deg, #fff 20%, #f1edff); }
+body { width: 390px; min-height: 560px; }
+main { padding: 18px 16px 16px; display: grid; gap: 14px; }
+.screen-heading { display: grid; gap: 1px; }
+.screen-heading strong { font-size: 22px; line-height: 28px; }
+.screen-heading small { color: var(--muted); font-size: 12px; }
+.status-chip { padding: 7px 11px; border-radius: 999px; background: var(--sage-light); color: var(--sage); display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 650; }
+.pairing-required { min-height: 560px; align-content: start; }
+.pairing-prompt { margin-top: 54px; padding: 28px 22px; display: grid; gap: 14px; text-align: center; }
+.pairing-prompt::before { content: "⌁"; width: 64px; height: 64px; margin: 0 auto 4px; display: grid; place-items: center; border-radius: 20px; background: var(--primary-light); color: var(--indigo); font-size: 34px; font-weight: 700; }
+.pairing-prompt h1 { margin: 0; font-size: 28px; line-height: 1.15; letter-spacing: -.035em; }
+.pairing-prompt .pill { width: 100%; min-height: 54px; margin-top: 6px; }
+.hero { padding: 24px 22px; display: grid; gap: 10px; }
+.hero-label { color: var(--muted); font-size: 13px; }
+.hero .tagline { margin-top: 8px; padding-top: 15px; border-top: 1px solid var(--border); font-size: 13px; }
 .section-title { margin-bottom: 9px; }
 .domain-list { overflow: hidden; box-shadow: none; }
-.domain-row { padding: 12px 14px; display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; align-items: center; border-bottom: 1px solid var(--border); }
+.domain-row { padding: 13px 14px; display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; border-bottom: 1px solid var(--border); }
 .domain-row:last-child { border-bottom: 0; }
-.domain-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.domain-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 footer button { flex: 1; }
-.connection { width: 100%; padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; border-color: var(--border); color: var(--ink); text-align: left; }
-.connection span:first-child { display: grid; gap: 2px; }
+.connection { width: 100%; padding: 13px 14px; display: grid; grid-template-columns: 40px 1fr auto; gap: 12px; align-items: center; border-color: var(--border); color: var(--ink); text-align: left; background: var(--surface); }
+.connection:hover { background: var(--surface-variant); }
+.connection-icon { width: 40px; height: 40px; border-radius: 12px; background: var(--sage-light); color: var(--sage); display: grid; place-items: center; font-size: 23px; }
+.connection-copy { display: grid; gap: 2px; }
 .connection small { font-size: 12px; }
-.scope-toggle { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: 999px; background: var(--surface-soft); }
-.scope-toggle[hidden] { display: none; }
-.scope-toggle button { border: 0; border-radius: 999px; padding: 7px; background: transparent; color: var(--muted); font-weight: 700; }
-.scope-toggle button.active { background: var(--indigo); color: white; }
+.chevron { color: var(--tertiary); font-size: 24px; }
+.scope-toggle { display: grid; grid-template-columns: 1fr 1fr; padding: 3px; border-radius: 999px; background: var(--surface-variant); }
+.scope-toggle button { min-height: 36px; border: 0; border-radius: 999px; padding: 7px; background: transparent; color: var(--muted); font-weight: 600; }
+.scope-toggle button.active { background: var(--surface); color: var(--indigo); box-shadow: 0 1px 4px rgba(26,28,30,.07); }

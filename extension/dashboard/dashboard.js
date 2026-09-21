@@ -136,6 +136,7 @@ function renderSettings() {
 
 function renderStatus() {
   const enabled = appState.settings.trackingEnabled !== false;
+  $("#trackingStatus").classList.toggle("paused", !enabled);
   $("#trackingStatus").innerHTML = `<i class="status-dot ${enabled ? "" : "paused"}"></i><span>${enabled ? "Tracking active" : "Tracking paused"}</span>`;
 }
 

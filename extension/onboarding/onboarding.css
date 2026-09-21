@@ -1,17 +1,20 @@
-body { min-height: 100vh; background: radial-gradient(circle at 80% 10%, #eee8ff 0, transparent 35%), var(--bg); }
-.shell { width: min(980px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0; }
+body { min-height: 100vh; background: var(--bg); }
+.shell { width: min(900px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0; }
 .brand { margin-bottom: 28px; }
-.pairing-card { padding: clamp(24px, 5vw, 54px); display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr); gap: 54px; align-items: center; }
-h1 { margin: 10px 0 14px; max-width: 560px; font-size: clamp(38px, 6vw, 64px); line-height: .98; letter-spacing: -.055em; }
+.pairing-card { padding: clamp(24px, 5vw, 46px); display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(280px, .85fr); gap: 44px; align-items: center; border-radius: 24px; }
+h1 { margin: 10px 0 14px; max-width: 520px; font-size: clamp(34px, 5vw, 44px); line-height: 1.08; letter-spacing: -.04em; }
 .copy > p { max-width: 590px; font-size: 16px; }
-ol { margin: 24px 0; padding-left: 22px; display: grid; gap: 10px; }
-.status-card { margin-top: 24px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface-soft); color: var(--indigo-dark); font-weight: 700; }
-.status-card.connected { background: #edf8ef; color: #396646; }
-.status-card.error { background: #fff0ed; color: #a64434; }
+ol { margin: 24px 0; padding: 0; display: grid; gap: 10px; list-style: none; counter-reset: steps; }
+ol li { counter-increment: steps; display: flex; align-items: center; gap: 11px; color: var(--muted); }
+ol li::before { content: counter(steps); width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; border-radius: 50%; background: var(--primary-light); color: var(--indigo); font-size: 12px; font-weight: 750; }
+.status-card { margin-top: 24px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 16px; background: var(--primary-light); color: var(--indigo-dark); font-weight: 650; }
+.status-card.connected { background: var(--sage-light); color: var(--sage); }
+.status-card.error { background: var(--coral-light); color: var(--coral); }
 .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
-.qr-panel { padding: 24px; display: grid; justify-items: center; gap: 10px; border-radius: 28px; background: #fff; border: 1px solid var(--border); box-shadow: var(--shadow); text-align: center; }
+.actions .pill { min-height: 54px; }
+.qr-panel { padding: 22px; display: grid; justify-items: center; gap: 10px; border-radius: 24px; background: var(--surface-variant); border: 1px solid var(--border); text-align: center; }
 .qr { width: min(280px, 100%); aspect-ratio: 1; display: grid; place-items: center; padding: 12px; background: #fff; border-radius: 18px; }
 .qr svg { width: 100%; height: 100%; }
 .qr.complete { color: var(--sage); font-size: 72px; }
-.privacy { margin: 22px auto 0; max-width: 700px; text-align: center; color: var(--muted); }
+.privacy { margin: 22px auto 0; max-width: 700px; text-align: center; color: var(--muted); font-family: Georgia, "Times New Roman", serif; font-style: italic; }
 @media (max-width: 760px) { .pairing-card { grid-template-columns: 1fr; gap: 28px; } .qr-panel { order: -1; } }
