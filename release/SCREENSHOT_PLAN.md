@@ -1,4 +1,6 @@
-# Truthful store screenshot plan
+# Archived optional screenshot plan
+
+SyncOn is currently installed privately, so these screenshots are not required. Keep this plan only for truthful product documentation or possible future distribution.
 
 Capture these only from the release build with representative demo data. Do not use mock screens that differ from the submitted product.
 

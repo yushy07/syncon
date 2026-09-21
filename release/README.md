@@ -1,10 +1,31 @@
-# SyncOn release handoff
+# SyncOn personal release handoff
 
-1. Read `PRIVACY_POLICY.md`, `ANDROID_DATA_SAFETY.md`, `CHROME_PERMISSION_JUSTIFICATIONS.md`, and `STORE_LISTINGS.md`.
-2. Create a private Android upload keystore and copy `keystore.properties.example` to the repository root as `keystore.properties`.
-3. Run `powershell -ExecutionPolicy Bypass -File release/package-release.ps1 -Version 1.0.0`.
-4. Capture the truthful runtime screenshots in `SCREENSHOT_PLAN.md`.
-5. Enable GitHub Pages with **GitHub Actions** as its source once; the included workflow publishes the policy at `https://yushy07.github.io/syncon/privacy.html`. Use that URL in both store consoles.
-6. Upload the signed `.aab` to a Play internal-testing track and the extension `.zip` to Chrome Web Store draft review.
+SyncOn is currently distributed only for personal use. No Play Store, Chrome Web Store or GitHub Pages setup is required.
 
-`release/artifacts/`, private keystores, and `keystore.properties` are intentionally ignored by Git.
+## Android
+
+Build and install the normal debug APK:
+
+```powershell
+.\gradlew.bat testDebugUnitTest
+.\gradlew.bat assembleDebug
+.\gradlew.bat installDebug
+```
+
+For a long-lived signed build, create a private keystore, copy `keystore.properties.example` to the repository root as `keystore.properties`, and fill in the local values. Keystores and `keystore.properties` are ignored and must never be committed.
+
+## Chrome
+
+Load the `extension` directory directly from `chrome://extensions` using **Load unpacked**. To create a convenient personal backup ZIP:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File release\package-release.ps1 -Version 1.0.0 -SkipAndroid
+```
+
+The extension must be connected to the Android app by QR code before its dashboard or tracking activates.
+
+## Reference documents
+
+The privacy, permission, listing and screenshot files in this directory are retained as product documentation and as optional references if distribution is considered later. They are not current publication tasks.
+
+Generated files under `release/artifacts/` and `release/screenshots/` are intentionally ignored by Git.

@@ -1,323 +1,221 @@
 <div align="center">
 
-<img src="assets/banner.png" alt="SyncOn Hero Banner" width="100%" />
-
-<br/><br/>
-
-<img src="assets/icons/android-chrome-192x192.png" width="88" height="88" alt="SyncOn App Icon" />
+<img src="assets/banner.png" alt="SyncOn" width="100%" />
 
 # SyncOn
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Platform](https://img.shields.io/badge/Platform-Android%2012%2B%20(API%2031%2B)-brightgreen.svg)](https://developer.android.com)
-[![Target SDK](https://img.shields.io/badge/Target%20SDK-36-green.svg)](https://developer.android.com)
-[![Language](https://img.shields.io/badge/Language-Kotlin%202.4-purple.svg)](https://kotlinlang.org)
-[![UI Toolkit](https://img.shields.io/badge/UI-Jetpack%20Compose%20%2F%20Material%203-blueviolet.svg)](https://developer.android.com/jetpack/compose)
-[![Privacy](https://img.shields.io/badge/Privacy-Local--first%20%7C%20Optional%20encrypted%20sync-success.svg)](#privacy--local-first-sync)
+[![Checks](https://github.com/yushy07/syncon/actions/workflows/checks.yml/badge.svg)](https://github.com/yushy07/syncon/actions/workflows/checks.yml)
+[![Android](https://img.shields.io/badge/Android-12%2B-3e6b5c)](https://developer.android.com/)
+[![Chrome](https://img.shields.io/badge/Chrome-Manifest%20V3-4f67e0)](extension/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-e06d53)](LICENSE)
 
-**A local-first digital wellbeing system for Android and Chrome with optional cross-platform sync.**
+**A personal, local-first screen-time system for Android and Chrome.**
 
-*"Same phone. A more intentional you."*
-
-[Features](#key-features) • [Design & Branding](#design--visual-identity) • [Architecture](#architecture) • [Usage-Day Logic](#usage-day-definition-400-am---400-am) • [Permissions](#permissions--setup) • [Getting Started](#getting-started) • [License](#license)
+Android works independently. The Chrome extension activates only after it is connected to Android with a one-time QR code.
 
 </div>
 
----
+## Product model
 
-## Overview
+| Component | Can run independently? | Role |
+|---|---:|---|
+| Android app | Yes | Primary app, Android tracking, limits, trends, account and connected-device control |
+| Chrome extension | No, first pairing is required | Focused website tracking, website limits and cross-platform views |
+| Supabase | Required for pairing and cross-device sync | Authentication, device membership, synchronization and private Realtime wakeups |
 
-**SyncOn** is an advanced, standalone Android application designed to give you uncompromising control over your screen time. While standard digital wellbeing tools provide passive observation, SyncOn enforces proactive, granular boundaries tailored to your daily schedule:
+After a browser has been paired successfully, temporary network outages do not stop its local tracking or blocking. Sync resumes when connectivity returns. Revoking the browser from Android locks the extension again.
 
-- 🔒 **Local-first & Private:** Tracking and blocking work offline. Cloud sync starts only after account sign-in and QR pairing.
-- 🌅 **Custom Usage Days:** Evaluates your day on a **4:00 AM to 4:00 AM** boundary—late night activity counts toward your actual awake period, not an arbitrary midnight reset.
-- 🛡️ **Strict vs. Soft Blocking:** Enforce ironclad limits on distraction apps while maintaining flexible snoozes for work and utility tools.
-- ⚡ **Data Gap Reconciliation:** Never loses usage history across reboots or background kills by reconciling with Android's system event log.
+## Features
 
----
+### Android
 
-## Design & Visual Identity
+- Foreground application tracking using Android usage events
+- Strict blocking and soft limits with configurable snoozes
+- App and category budgets
+- 4:00 AM to 4:00 AM usage day
+- Reboot and process-recovery reconciliation
+- All, Android and Chrome dashboard/trend scopes
+- Connected-browser management, revocation and cloud-account deletion
+- Room database with versioned migrations and local backup support
 
-SyncOn's brand aesthetic embodies mindfulness, calm focus, and intentional digital balance:
+### Chrome
 
-<div align="center">
+- Android-required first-run QR activation
+- Focused-tab tracking with idle and unfocused-window exclusion
+- Domain and category limits with strict or soft blocking
+- Native limit warnings, clean-day streaks and 7/14/30-day trends
+- IndexedDB interval, cursor, retry and conflict storage
+- Manifest V3 service-worker recovery
+- Android-matched visual design across popup, dashboard, pairing and block screens
 
-| App Launcher (Squircle) | Round Launcher | Adaptive Foreground | Notification Icon | Web Favicon |
-|:---:|:---:|:---:|:---:|:---:|
-| <img src="assets/icons/android-chrome-192x192.png" width="64" height="64" alt="Launcher Squircle" /> | <img src="app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png" width="64" height="64" alt="Round Icon" /> | <img src="app/src/main/res/mipmap-xxhdpi/ic_launcher_foreground.png" width="64" height="64" alt="Foreground Sprout" /> | <img src="app/src/main/res/drawable-xxhdpi/ic_stat_syncon.png" width="48" height="48" alt="Status Notification" /> | <img src="assets/icons/favicon-32x32.png" width="32" height="32" alt="Favicon" /> |
-| `ic_launcher` | `ic_launcher_round` | `ic_launcher_foreground` | `ic_stat_syncon` | `favicon.ico` |
+### Connected system
 
-</div>
+- Account-scoped synchronization protected by Supabase Row Level Security
+- Idempotent activity intervals and revision-based incremental pulls
+- Explicit setting conflict records and per-record acknowledgements
+- Logical service merging such as the YouTube app and `youtube.com`
+- Summed device time and overlap-adjusted active digital span
+- Private Realtime wakeups with scheduled/manual fallback
+- Expiring, single-use QR pairing requests with abuse limits and audit events
 
-### Color Palette
+## How pairing works
 
-| Color Token | Hex Code | Visual Role |
-|---|:---:|---|
-| **Dark Obsidian** | `#15182B` | Brand squircle background, adaptive icon base, status bar theme |
-| **Primary Indigo** | `#4F67E0` | Primary action buttons, active navigation indicators, key highlights |
-| **Warm Background** | `#FBF9F5` | Calming daylight background surface |
-| **Accent Coral** | `#E06D53` | Strict blocking alert, approaching limit warnings |
-| **Accent Sage** | `#3E6B5C` | Health indicators, permission granted states, calm accents |
-| **Accent Amber** | `#E8A838` | Soft limit warnings, browser categories |
+```mermaid
+sequenceDiagram
+    participant Extension as Chrome extension
+    participant Backend as Supabase
+    participant Android as Android app
 
----
+    Extension->>Backend: Create short-lived pairing request
+    Extension-->>Android: Display one-time QR
+    Android->>Backend: Scan, verify and approve request
+    Backend-->>Extension: Account access granted
+    Extension->>Backend: Register installation and sync
+    Backend-->>Android: Cross-platform changes available
+```
 
-## Key Features
+The QR contains a request ID and one-time secret. It does not contain a password, access token or usage history.
 
-### ⏱️ High-Precision Tracking & Gap Reconciliation
-- Tracks active foreground duration across all installed applications via `UsageStatsManager`.
-- Updates counters in ~5-minute granular intervals using a persistent `ForegroundTrackingService`.
-- **Automatic Gap Catch-up:** Even if killed by aggressive OEM battery managers or across system reboots, SyncOn catches up on missed events using historical timestamps upon wake-up.
+## Local installation
 
-### 🛡️ Dual-Tier Enforcement (Strict vs. Soft)
-Configure each application with an independent daily limit:
-- 🔴 **STRICT Mode:** Once the limit is exhausted, access is immediately blocked. A dedicated, non-dismissible `BlockedActivity` prevents usage until the 4:00 AM reset.
-- 🟡 **SOFT Mode:** When blocked, a **"Snooze (+N mins)"** button allows temporary extension while auditing each snooze event into the database.
+SyncOn is maintained as a personal project. Play Store, Chrome Web Store and public-site publication are not required.
 
-### 🔔 Smart Advance Warnings
-- Fires a heads-up notification when remaining time drops to or below the warning threshold (default 5 minutes), preventing unexpected interruptions.
+### Requirements
 
-### 🌅 4:00 AM – 4:00 AM Usage-Day Boundary
-- Standard calendar days reset at midnight. SyncOn uses a unified `UsageDayCalculator` ensuring usage at 1:30 AM is attributed to the previous day's counters.
+- Android Studio with Android SDK 36
+- JDK 21
+- Android 12 / API 31 or newer
+- A Chromium browser with Manifest V3 support
+- Node.js 20 or newer for extension checks
+- A linked Supabase project when changing or redeploying the backend
 
-### 🏷️ Intelligent App Categorization
-- Automatically assigns categories (Social Media, Entertainment, Communication, Productivity, etc.) upon first detection.
-- Full manual override support: user-defined category tags are locked and permanently respected.
+### Android
 
-### 📊 Trends & Long-Term Analytics
-- **Today's Breakdown:** Instant visibility into top apps, category distribution, and remaining budgets.
-- **7-Day & 30-Day Trends:** Interactive Jetpack Compose bar charts and summaries.
-- **3-Year Retention:** Retains up to 1,095 days of indexed daily usage history with automated background pruning via `WorkManager`.
+On Windows:
 
-### 🧪 Comprehensive Test Coverage
-- **Pure JVM Unit Tests:** Decoupled business logic allowing unit tests to run in seconds without heavy Android mocks or Robolectric.
-- **Repository Validation:** Full test coverage for limit checks, active snooze calculations, warning thresholds (80%), and retention pruning.
-- **Precision Time Tests:** Validates the 4:00 AM boundary logic across midnight, leap years, and edge-case timestamps.
+```powershell
+.\gradlew.bat testDebugUnitTest
+.\gradlew.bat assembleDebug
+.\gradlew.bat installDebug
+```
 
----
+The APK is generated under `app/build/outputs/apk/debug/`. On macOS/Linux, use `./gradlew` instead of `.\gradlew.bat`.
 
-## Privacy & Local-First Sync
+Android requires Usage Access for screen-time events and Accessibility access for immediate limit enforcement. The app guides you through these permissions during onboarding.
 
-SyncOn records Android usage locally in Room and Chrome usage locally in IndexedDB before any network request. Tracking, limits, blocking, exports, and local history remain usable without an account or connection.
+### Chrome extension
 
-When the user signs in and pairs Chrome through a short-lived QR request, SyncOn sends normalized app/domain activity intervals, settings, device membership, and sync cursors to the user's Supabase-backed account. It does not collect page contents, full browsing URLs, form data, keystrokes, contacts, advertising identifiers, or precise location. There are no ads or third-party analytics. See [`release/PRIVACY_POLICY.md`](release/PRIVACY_POLICY.md) for the release policy.
+1. Open `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Select **Load unpacked**.
+4. Choose the repository's `extension` folder.
+5. The pairing screen opens automatically.
+6. In Android, open **Settings → Connected devices → Scan Chrome QR**.
+7. Approve the browser and wait for the first sync.
 
----
+If the extension is already loaded, use **Reload** on `chrome://extensions` after pulling new changes.
+
+## Verification
+
+Android checks:
+
+```powershell
+.\gradlew.bat testDebugUnitTest
+.\gradlew.bat assembleDebug
+```
+
+Extension checks:
+
+```powershell
+cd extension
+npm test
+npm run check
+```
+
+Package the extension ZIP locally:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File release\package-release.ps1 -Version 1.0.0 -SkipAndroid
+```
+
+Generated binaries are intentionally ignored by Git.
 
 ## Architecture
 
-SyncOn follows modern Android Clean Architecture principles, leveraging Jetpack Compose for declarative UI, Coroutines/Flow for asynchronous data streams, and Room for persistence.
-
 ```mermaid
-graph TD
-    subgraph UI ["UI Layer (Jetpack Compose & Material 3)"]
-        Dashboard["Dashboard Screen"]
-        AppList["App List & Limits Screen"]
-        AppDetail["App Detail & Settings"]
-        Trends["7-Day & 30-Day Trends"]
-        BlockedUI["BlockedActivity (Enforcement)"]
+flowchart LR
+    subgraph Android
+        AUI[Compose UI]
+        ASVC[Tracking and blocking services]
+        ADB[(Room)]
+        ASYNC[Cloud sync repository]
+        AUI --> ADB
+        ASVC --> ADB
+        ADB --> ASYNC
     end
 
-    subgraph Service ["Background & Enforcement Layer"]
-        FGS["ForegroundTrackingService<br/>(5-min Tracking & Catch-up)"]
-        A11Y["BlockAccessibilityService<br/>(Instant App Switch Detection)"]
-        Boot["BootReceiver<br/>(Reboot Persistence)"]
-        Worker["DailyResetWorker<br/>(4 AM Daily Reset & Pruning)"]
+    subgraph Chrome
+        CUI[Popup and dashboard]
+        CSW[Manifest V3 worker]
+        CDB[(IndexedDB and Chrome storage)]
+        CUI --> CSW
+        CSW --> CDB
     end
 
-    subgraph Core ["Dependency Management"]
-        App["SyncOnApp<br/>(Centralized Repository Provider)"]
+    subgraph Supabase
+        AUTH[Auth]
+        PG[(Postgres and RLS)]
+        RT[Private Realtime]
     end
 
-    subgraph Domain ["Repository & Utilities"]
-        Repo["UsageRepository<br/>(Business Logic & Gap Reconciliation)"]
-        DayCalc["UsageDayCalculator<br/>(4 AM Boundary Engine)"]
-        CatMap["CategoryMapper"]
-        Notif["NotificationHelper"]
-    end
-
-    subgraph Data ["Local Storage (Room / SQLite)"]
-        DB[(AppDatabase)]
-        AppInfoTbl["AppInfo"]
-        DailyUsageTbl["DailyUsage"]
-        LimitSettingsTbl["AppLimitSettings"]
-        DailyStateTbl["AppDailyState"]
-        BlockEventTbl["BlockEvent"]
-    end
-
-    App -.-> Repo
-    UI --> Repo
-    Service --> Repo
-    Service --> DayCalc
-    Repo --> DB
-    FGS --> DayCalc
-    A11Y --> BlockedUI
-    A11Y --> Notif
+    ASYNC <--> AUTH
+    ASYNC <--> PG
+    CSW <--> AUTH
+    CSW <--> PG
+    RT --> ASYNC
+    RT --> CSW
 ```
 
-### Architectural Highlights
-- **Centralized Repository Provider:** Application-level singleton container (`SyncOnApp.repository`) ensures consistent state across UI, services, and background workers without third-party DI reflection overhead.
-- **SQL-Level Aggregation:** Multi-day and category usage totals are computed directly in SQLite using native `SUM()` and `GROUP BY` queries in `DailyUsageDao`, minimizing memory footprints.
-- **Room Schema Versioning:** Database schemas are exported and version-controlled under `app/schemas/` to guarantee safe and deterministic migrations.
+Important shared rules live in [`shared/`](shared/):
 
----
+- [`data-contract-v1.md`](shared/data-contract-v1.md) — synchronized interval and revision model
+- [`cross-platform-policy-v1.md`](shared/cross-platform-policy-v1.md) — totals, overlap and conflict rules
+- [`service-mappings-v1.json`](shared/service-mappings-v1.json) — Android package/domain mappings
 
-## Tech Stack
+Backend migrations and the callable contract live in [`supabase/`](supabase/).
 
-| Component | Technology | Description |
-|---|---|---|
-| **Language** | [Kotlin 2.4](https://kotlinlang.org) | Modern idiomatic Kotlin with coroutines & Flow |
-| **UI Toolkit** | [Jetpack Compose (BOM 2026.03)](https://developer.android.com/jetpack/compose) | Declarative UI with Material Design 3 |
-| **Persistence** | [Room 2.8](https://developer.android.com/training/data-storage/room) | SQLite abstraction layer with KSP code generation & tracked schemas |
-| **Background Work** | [WorkManager 2.10](https://developer.android.com/topic/libraries/architecture/workmanager) | Periodic 4 AM maintenance and retention cleanup |
-| **Testing** | JUnit 4, Kotlin Coroutines Test | Fast, pure JVM unit testing with zero-dependency fakes |
-| **System APIs** | `UsageStatsManager`, `AccessibilityService` | Real-time usage event monitoring and foreground detection |
-| **Tooling & Build** | Android Gradle Plugin 9.3, Gradle 9.7, Java 21 | Version catalog (`libs.versions.toml`) |
+## Repository layout
 
----
-
-## Usage-Day Definition (4:00 AM - 4:00 AM)
-
-SyncOn centralizes all date boundary calculations into `UsageDayCalculator`:
-
-```
-localDateTime = convert(timestamp, deviceTimeZone)
-if localDateTime.hour < 4:
-    return localDateTime.date - 1 day
-else:
-    return localDateTime.date
-```
-
-All queries for "today's usage", daily limits, warning states, and historical charts run against this usage-day key (`YYYY-MM-DD`).
-
----
-
-## Permissions & Setup
-
-To deliver automated tracking and enforcement without root access, SyncOn requests specialized Android permissions during onboarding:
-
-1. **Usage Access (`PACKAGE_USAGE_STATS`)**:
-   - Enables querying `UsageStatsManager` for foreground app session times.
-2. **Accessibility Service (`BlockAccessibilityService`)**:
-   - Detects `TYPE_WINDOW_STATE_CHANGED` events to instantly trigger `BlockedActivity` when an over-limit app is launched.
-3. **Battery Optimization Exemption (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`)**:
-   - Ensures the foreground tracking loop runs consistently without being killed during device sleep.
-4. **Boot Completed (`RECEIVE_BOOT_COMPLETED`)**:
-   - Automatically restarts the tracking service whenever the device restarts.
-
----
-
-## Project Structure
-
-```
+```text
 syncon/
-├── assets/
-│   ├── banner.png           # High-resolution repository hero banner
-│   └── icons/               # Web favicons, PWA icons, vector SVG & webmanifest
-├── app/
-│   ├── schemas/             # Versioned Room database schemas (JSON)
-│   └── src/
-│       ├── main/
-│       │   ├── AndroidManifest.xml
-│       │   ├── java/com/yu/syncon/
-│       │   │   ├── data/
-│       │   │   │   ├── local/
-│       │   │   │   │   ├── dao/             # Room DAOs (DailyUsage, AppInfo, Limits, etc.)
-│       │   │   │   │   ├── entity/          # Room @Entity schemas
-│       │   │   │   │   └── AppDatabase.kt   # Database configuration & type converters
-│       │   │   │   └── repository/          # UsageRepository (data access & business logic)
-│       │   │   ├── service/
-│       │   │   │   ├── accessibility/       # BlockAccessibilityService (real-time blocking)
-│       │   │   │   ├── receiver/            # BootReceiver (boot listener)
-│       │   │   │   ├── tracking/            # ForegroundTrackingService (5-min tracking loop)
-│       │   │   │   └── worker/              # DailyResetWorker (4 AM maintenance)
-│       │   │   ├── ui/
-│       │   │   │   ├── appdetail/           # Per-app limit configuration
-│       │   │   │   ├── applist/             # Installed apps with category filters
-│       │   │   │   ├── blocked/             # Fullscreen blocking overlay screen
-│       │   │   │   ├── components/          # Reusable Compose charts and controls
-│       │   │   │   ├── dashboard/           # Today's metrics and summary
-│       │   │   │   ├── navigation/          # Compose Navigation routes
-│       │   │   │   ├── onboarding/          # Step-by-step permissions flow
-│       │   │   │   ├── settings/            # App settings and permission status
-│       │   │   │   ├── theme/               # Material 3 colors, typography, shapes
-│       │   │   │   └── trends/              # 7-day and 30-day analytics charts
-│       │   │   ├── util/
-│       │   │   │   ├── CategoryMapper.kt    # Default category mapping
-│       │   │   │   ├── NotificationHelper.kt# Heads-up limit warning notifications
-│       │   │   │   ├── PermissionUtils.kt   # App-ops and permission checkers
-│       │   │   │   └── UsageDayCalculator.kt# 4 AM boundary calculation engine
-│       │   │   └── SyncOnApp.kt             # Application class & centralized repository provider
-│       │   └── res/
-│       │       ├── drawable/                # Play Store & in-app brand logos
-│       │       ├── drawable-*/              # Monochrome status bar notification icons
-│       │       ├── mipmap-anydpi-v26/       # Android 13+ adaptive & themed icons
-│       │       ├── mipmap-*/                # Multi-density launcher icons (mdpi to xxxhdpi)
-│       │       ├── values/                  # Strings, colors, themes, launcher background
-│       │       └── xml/                     # Accessibility service configuration
-│       └── test/java/com/yu/syncon/         # JVM unit tests (Repository, Calculator, Mapper)
+├── app/                 Android application, Room schemas and tests
+├── extension/           Load-unpacked Chrome extension and Node tests
+├── supabase/            Database migrations and backend contract
+├── shared/              Cross-platform data and product rules
+├── assets/              Repository and brand artwork
+├── release/             Local packaging and reference documentation
+├── docs/                Repository copy of support/privacy information
+└── .github/workflows/   Android and extension checks
 ```
 
----
+## Privacy and security
 
-## Getting Started
+- Android stores local usage in Room; Chrome stores paired-browser usage in IndexedDB and extension storage.
+- Chrome stores normalized domains, not page paths, query strings, page contents, form data or keystrokes.
+- SyncOn has no ads, advertising identifiers or third-party analytics.
+- Cloud rows are isolated by account with Row Level Security.
+- Pairing secrets are short-lived, single-use and stored by the backend only as hashes.
+- Private credentials, keystores, local SDK paths, generated APK/AAB files and extension ZIPs must never be committed.
+- Never place a Supabase service-role key in either client. Only the publishable client key belongs in Android or Chrome builds.
 
-### Prerequisites
-- **Android Studio** Ladybug (or Antigravity IDE)
-- **JDK 21**
-- **Android Device or Emulator** running **Android 12 (API level 31)** or higher
+See [`release/PRIVACY_POLICY.md`](release/PRIVACY_POLICY.md) for the detailed data description.
 
-### Build & Run
+## Current verification boundary
 
-1. **Clone the repository:**
-   ```bash
-   git clone https://github.com/yushy07/syncon.git
-   cd syncon
-   ```
-
-2. **Run Automated Unit Tests:**
-   ```bash
-   ./gradlew test
-   ```
-
-3. **Build Debug APK:**
-   ```bash
-   ./gradlew assembleDebug
-   ```
-
-4. **Install on connected device via ADB:**
-   ```bash
-   ./gradlew installDebug
-   ```
-
----
-
-## Chrome Extension
-
-The local-first Chrome companion lives in [`extension/`](extension/). It is self-contained and can be loaded directly through `chrome://extensions` using **Load unpacked**—no build step is required.
-
-The extension tracks focused domain-level activity, excludes idle and unfocused time, supports strict and soft website limits, and stores precise backend-ready intervals locally. It does not collect full URLs, page contents, form data, or search terms.
-
-The Android and Chrome clients share the activity model documented in [`shared/data-contract-v1.md`](shared/data-contract-v1.md). Supabase provides account-scoped RLS, QR pairing, cursor sync, explicit setting conflicts, Realtime wake signals, cleanup jobs, connected-device revocation, and account deletion.
-
----
+Automated Android unit tests, extension tests and static JavaScript checks are included. Real-device checks are still required after environment-sensitive changes, especially QR pairing, Android permissions, process/reboot recovery, Chrome service-worker suspension and offline reconnection.
 
 ## License
 
-This project is licensed under the **Apache License, Version 2.0**.
+Licensed under the [Apache License 2.0](LICENSE).
 
-```
-Copyright 2026 Ayush Kant
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-```
+Copyright 2026 Ayush Kant.

@@ -1,6 +1,6 @@
 # SyncOn Chrome Extension
 
-Local-first Chrome screen-time tracking for the SyncOn project. The extension records only focused domain-level activity. It does not read page contents, form data, search queries, or full URL paths.
+The Android-connected Chrome companion for SyncOn. It records only focused domain-level activity and does not read page contents, form data, search queries, or full URL paths.
 
 ## Load in Chrome
 
@@ -31,10 +31,13 @@ The extension works without a build step. On first install it opens a pairing pa
 - Overlap-adjusted active digital span
 - IndexedDB interval, cursor, conflict, retry, and remote-cache storage
 - Private Supabase Realtime wakeups with alarm/manual fallback
+- The same warm, calm visual system used by the Android app
 
 ## Pairing and privacy
 
 After activation, tracking remains local-first in IndexedDB and `chrome.storage.local`, including during temporary network outages. A fresh install creates an anonymous Supabase identity only for secure pairing, and Android grants only that browser installation access to the user's SyncOn account. The QR contains a short-lived request ID and one-time secret—not credentials or activity data.
+
+Revoking the browser from Android disables extension tracking and returns the extension to the pairing flow.
 
 ## Developer checks
 

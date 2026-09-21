@@ -2,7 +2,7 @@
 
 ## Single purpose
 
-SyncOn tracks time spent on the focused website, shows digital-wellbeing reports, and enforces limits chosen by the user. Optional QR pairing synchronizes those reports and limits with the user's Android app.
+SyncOn tracks time spent on the focused website, shows digital-wellbeing reports, and enforces limits chosen by the user. First-run QR pairing with the Android app is required to activate the extension and synchronize reports and limits.
 
 ## Permissions
 

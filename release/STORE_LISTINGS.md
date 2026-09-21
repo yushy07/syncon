@@ -1,4 +1,6 @@
-# Store listing copy
+# Archived optional store listing copy
+
+SyncOn is currently a personal-use project and is not being submitted to either store. This copy is retained only as a future reference.
 
 ## Google Play
 
@@ -31,7 +33,7 @@ Android requires Usage Access for app timing and Accessibility for immediate lim
 
 **Name:** SyncOn — Browser Screen Time
 
-**Summary:** Private, local-first focused website tracking and limits with optional Android sync.
+**Summary:** Private focused website tracking and limits connected securely to SyncOn Android.
 
 **Description:**
 
@@ -39,7 +41,7 @@ SyncOn records time only while a normal web page is focused and the computer is 
 
 Create per-site or category budgets, choose strict blocking or a short snooze, and receive a native warning before time runs out. Tracking, blocking, history, and settings remain usable offline.
 
-Pairing is optional. On first install, SyncOn can display a single-use QR code that the Android app scans to grant this browser access to the same account. The QR contains no password or usage history.
+Pairing is required. On first install, SyncOn displays a single-use QR code that the Android app scans to activate the browser and grant it access to the same account. The QR contains no password or usage history.
 
 SyncOn stores normalized domains—not page paths, searches, page contents, form data, or keystrokes. It includes no advertising, third-party analytics, or remote code.
 

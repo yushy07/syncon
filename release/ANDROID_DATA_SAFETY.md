@@ -1,4 +1,6 @@
-# Google Play Data safety answers
+# Archived optional Google Play data-safety reference
+
+SyncOn is currently installed privately and is not being submitted to Google Play. Keep these answers as a future reference only.
 
 Use this as the source of truth when completing the Play Console form.
 

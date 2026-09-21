@@ -2,7 +2,7 @@
 
 Status date: 2026-09-21  
 Scope: Android app + Chrome extension + Supabase + QR pairing + shared product design  
-Implementation rule: local tracking and blocking must continue even when authentication, Supabase, or another device is unavailable.
+Implementation rule: Android remains fully standalone. Chrome must pair with Android once before activation; after that, its local tracking and blocking continue through temporary authentication, Supabase, or device unavailability.
 
 ## Implementation update — 2026-09-21
 
@@ -13,16 +13,16 @@ Production-hardening code from phases 1–10 is now implemented and pushed:
 - Android Room v7 durably stores the sync cursor, connected-device cache, conflicts, and retry metadata. Pull application and cursor advancement share a Room transaction.
 - Android subscribes to private Realtime wakeups, displays All/Android/Chrome Trends, merges known logical services, and exposes permanent cloud-account deletion.
 - Chrome IndexedDB v3 durably stores cursor/state snapshots, conflicts, retry metadata, and remote intervals. It uses v3 acknowledgements/conflicts, private Realtime wakeups, logical-service merging, and active digital span.
-- Store privacy copy, data-safety answers, permission justifications, listing text, signing wiring, packaging automation, and a GitHub Pages privacy site are prepared under `release/` and `docs/`.
+- Privacy copy, permission notes, signing wiring and local packaging automation are retained under `release/` and `docs/`. Store and public-site publication are not part of the current personal-use goal.
 
-Phase 11 remains the release gate: real Android/Chrome pairing and recovery scenarios, final runtime screenshots, a private Android upload key, store-console submissions, and CAPTCHA provider credentials. These external/device steps are not represented as completed by source builds alone.
+The remaining personal-use gate is real Android/Chrome pairing and recovery verification. A private Android signing key is optional for a long-lived release APK; store submissions, public screenshots and CAPTCHA-provider setup are not current requirements.
 
 ## 1. Final product outcome
 
 SyncOn becomes one connected digital-wellbeing product with two local-first clients:
 
 - The Android app tracks Android applications and remains the primary account and device-management surface.
-- The Chrome extension tracks focused domain usage and remains usable without pairing.
+- The Chrome extension tracks focused domain usage only after Android approves its first-run QR pairing.
 - Supabase synchronizes immutable activity intervals, settings, categories, block events, device membership, and cursors.
 - A newly installed extension opens a first-run page with a one-time QR code.
 - The Android app scans the QR, confirms the computer, and securely connects the extension to the same SyncOn account.

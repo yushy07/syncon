@@ -24,7 +24,7 @@ The shared settings model supports four explicit targets:
 - `LOGICAL_SERVICE`: mapped sources such as the YouTube app plus `youtube.com`.
 - `ACCOUNT`: all tracked activity across selected platforms.
 
-Until backend synchronization exists, Android enforces Android-local source/category limits and Chrome enforces Chrome-local source/category limits. `LOGICAL_SERVICE` and `ACCOUNT` limits are reserved for the connected phase because neither offline client can truthfully know the other device's current usage.
+Android enforces Android-local source/category limits and Chrome enforces Chrome-local source/category limits. Synchronized settings and logical-service views are shared, but neither offline client pretends to know live activity that has not yet arrived from the other device. `ACCOUNT`-wide enforcement remains outside the current client behavior.
 
 ## Conflict policy
 
@@ -36,4 +36,4 @@ Until backend synchronization exists, Android enforces Android-local source/cate
 
 ## Contract status
 
-The activity and settings contracts are frozen for client development as version 1. Future incompatible changes require a new version and explicit migration. Real-device and Chrome runtime verification remain separate release gates.
+The activity and settings contracts are implemented as version 1. Future incompatible changes require a new version and explicit migration. Real-device Android/Chrome verification remains separate from automated checks.

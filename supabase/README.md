@@ -1,36 +1,44 @@
 # SyncOn Supabase backend
 
-This directory is the versioned source of truth for SyncOn's account and cross-platform synchronization backend.
+This directory is the versioned source of truth for SyncOn pairing and cross-platform synchronization.
 
 ## Project
 
-- Supabase project reference: `nqpristylxavyexqgjtp`
-- Contract version: `1`
-- Migrations: `migrations/202609190001_syncon_sync_v1.sql` through `202609200004_pairing_lifecycle.sql`
+- Project reference: `nqpristylxavyexqgjtp`
+- Shared client contract: version 1
+- Applied migration series: `202609190001` through `202609200005`
+- Detailed callable interface: [`API_CONTRACT.md`](API_CONTRACT.md)
 
-## What migration v1 provides
+## Current capabilities
 
-- Supabase Auth-owned profiles
+- Supabase Auth identities and account membership
 - Registered Android and Chrome installations
-- Idempotent activity intervals keyed by the client `record_id`
-- Syncable source metadata, limits, block events, and manual service mappings
-- Monotonic server revisions for cursor-based synchronization
-- Row Level Security that isolates every account
-- `sync_register_installation_v1` for device registration
-- `sync_push_intervals_v1` for atomic, duplicate-safe interval uploads
-- `sync_push_state_v1` for source metadata, limits, block events, and manual mappings
-- `sync_pull_v1` for bounded revision-based downloads
-- `account_usage_summary_v1` for summed device time and overlap-adjusted active span
-- Supabase Realtime publication for synchronized record changes
-- Account membership and one-time Android-to-Chrome QR pairing in migration v2
+- Short-lived, single-use Android-to-Chrome QR pairing
+- Account-scoped Row Level Security
+- Idempotent activity intervals with stable client record IDs
+- Incremental cursor pulls using monotonic server revisions
+- Per-record acknowledgements and explicit setting conflicts
+- Synchronized sources, limits, block events and logical-service mappings
+- Summed device time and overlap-adjusted active digital span
+- Private account Realtime broadcast topics
+- Pairing rate limits, attempt locks and security audit events
+- Scheduled deletion of expired pairing/anonymous records
+- Device revocation and owner account deletion
 
-## Deployment order
+## CLI workflow
 
-1. Apply the migration to the linked Supabase project.
-2. Verify every table has RLS enabled and that unauthenticated requests are rejected.
-3. Configure the Android app and Chrome extension with the project URL and publishable key.
-4. Add account sign-in and token persistence to both clients.
-5. Register each installation, then push local records and pull server revisions.
-6. Keep tracking and enforcement local-first; network failure must never stop local recording or blocking.
+```powershell
+supabase login
+supabase link --project-ref nqpristylxavyexqgjtp
+supabase migration list
+supabase db lint --linked
+supabase db push
+```
 
-The migration contains no service-role key and clients must never receive one. Both clients use an authenticated user JWT plus the project's publishable key.
+Review every pending migration before `db push`. Do not create destructive repair migrations casually against the personal live project.
+
+## Security boundary
+
+Clients use the project URL, a publishable client key and authenticated user sessions. Never place a service-role key in Android, the extension, Git history, logs or QR payloads.
+
+Local tracking and blocking remain client responsibilities. Supabase provides pairing, synchronization, authorization, cleanup and Realtime wake signals; network loss must not disable an already-paired client's local enforcement.

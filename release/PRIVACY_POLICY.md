@@ -2,7 +2,7 @@
 
 Effective date: September 21, 2026
 
-SyncOn is a local-first Android application and Chrome extension for screen-time tracking and limit enforcement. Tracking and blocking continue without an account or internet connection.
+SyncOn is a local-first Android application with an Android-connected Chrome extension for screen-time tracking and limit enforcement. Android works without the extension or an internet connection. Chrome requires one successful Android QR pairing before activation; after that, temporary internet outages do not stop local tracking or blocking.
 
 ## Data SyncOn processes
 
@@ -17,9 +17,9 @@ SyncOn does not collect full browsing URLs, page contents, search queries, form 
 
 The data is used only to calculate screen time, show Android/Chrome/combined reports, enforce user-configured limits, pair devices, synchronize user settings and history, prevent pairing abuse, and diagnose synchronization failures.
 
-## Local storage and optional cloud sync
+## Local storage and connected sync
 
-Android data is written to the app's local Room database. Chrome data is written to extension-owned IndexedDB and Chrome storage. If the user signs in and pairs a browser, selected activity and settings are synchronized to a Supabase project over encrypted HTTPS/WebSocket connections. Each cloud row is restricted to the user's account through Row Level Security.
+Android data is written to the app's local Room database. Once activated by Android, Chrome data is written to extension-owned IndexedDB and Chrome storage. When the user signs in and pairs a browser, selected activity and settings are synchronized to a Supabase project over encrypted HTTPS/WebSocket connections. Each cloud row is restricted to the user's account through Row Level Security.
 
 ## Sharing and sale
 

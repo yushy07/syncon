@@ -20,17 +20,17 @@ This contract is implemented locally by the Android app and Chrome extension. It
 | `createdAtUtc` | Record creation time |
 | `updatedAtUtc` | Last local modification time |
 | `localRevision` | Monotonic client revision |
-| `serverRevision` | Future backend revision; currently null |
-| `syncState` | Currently `LOCAL_ONLY`; future values include `PENDING_UPLOAD`, `SYNCED`, `SYNC_FAILED`, and `PENDING_DELETE` |
-| `isDeleted` | Tombstone marker for future synchronized deletion |
+| `serverRevision` | Latest acknowledged backend revision, or null before acknowledgement |
+| `syncState` | Local lifecycle such as `LOCAL_ONLY`, `PENDING_UPLOAD`, `SYNCED`, `SYNC_FAILED`, or `PENDING_DELETE` |
+| `isDeleted` | Tombstone marker for synchronized deletion |
 
 ## Rules
 
-- Clients save locally before any future upload.
+- Clients save locally before upload.
 - Repeating an upload with the same `recordId` must not duplicate usage.
 - Activity intervals are append-only except for explicit correction or deletion revisions.
 - Android package names and Chrome domains remain separate source identities.
-- A future mapping layer may connect sources such as the YouTube Android app and `youtube.com` to one logical service.
+- The mapping layer connects sources such as the YouTube Android app and `youtube.com` to one logical service while preserving their raw identities.
 - The backend must preserve the device-assigned `usageDate`, timezone, and reset boundary.
 - Account dashboards should expose both summed device time and overlap-adjusted human time.
 - Manual categories override automatic categories.
