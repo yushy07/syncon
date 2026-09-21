@@ -75,6 +75,8 @@ fun ConnectedDevicesScreen(onBack: () -> Unit) {
     var devices by remember { mutableStateOf<List<ConnectedInstallation>>(emptyList()) }
     var pendingRevoke by remember { mutableStateOf<ConnectedInstallation?>(null) }
     var pendingPairingCode by remember { mutableStateOf<String?>(null) }
+    var pendingAccountDelete by remember { mutableStateOf(false) }
+    var conflictCount by remember { mutableStateOf(0) }
 
     suspend fun refreshDevices() {
         if (!cloud.isSignedIn()) {
@@ -84,6 +86,7 @@ fun ConnectedDevicesScreen(onBack: () -> Unit) {
         devices = runCatching { cloud.connectedInstallations() }
             .onFailure { message = it.message }
             .getOrDefault(emptyList())
+        conflictCount = cloud.unresolvedConflictCount()
     }
 
     LaunchedEffect(signedIn) { if (signedIn) refreshDevices() }
@@ -192,6 +195,13 @@ fun ConnectedDevicesScreen(onBack: () -> Unit) {
                                 }
                             }
                         )
+                        if (conflictCount > 0) {
+                            Text(
+                                "$conflictCount setting change${if (conflictCount == 1) "" else "s"} from another device need review. The server-approved version is active.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AccentCoral
+                            )
+                        }
                     }
                 }
             } else {
@@ -247,6 +257,9 @@ fun ConnectedDevicesScreen(onBack: () -> Unit) {
                         }
                     }
                 )
+                TextButton(onClick = { pendingAccountDelete = true }) {
+                    Text("Delete SyncOn account", color = AccentCoral)
+                }
             }
 
             message?.let {
@@ -300,6 +313,31 @@ fun ConnectedDevicesScreen(onBack: () -> Unit) {
                 }) { Text("Connect", color = PrimaryIndigo) }
             },
             dismissButton = { TextButton(onClick = { pendingPairingCode = null }) { Text("Cancel") } }
+        )
+    }
+
+    if (pendingAccountDelete) {
+        AlertDialog(
+            onDismissRequest = { pendingAccountDelete = false },
+            title = { Text("Delete your SyncOn account?") },
+            text = { Text("This permanently removes the cloud account, connected-device access, and synced cloud history. Local tracking data on this phone and browser installations is not silently erased.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingAccountDelete = false
+                    scope.launch {
+                        busy = true
+                        runCatching { cloud.deleteAccount() }
+                            .onSuccess {
+                                signedIn = false
+                                devices = emptyList()
+                                message = "SyncOn cloud account deleted. Local phone history remains."
+                            }
+                            .onFailure { message = it.message ?: "Account deletion failed" }
+                        busy = false
+                    }
+                }) { Text("Delete permanently", color = AccentCoral) }
+            },
+            dismissButton = { TextButton(onClick = { pendingAccountDelete = false }) { Text("Keep account") } }
         )
     }
 }

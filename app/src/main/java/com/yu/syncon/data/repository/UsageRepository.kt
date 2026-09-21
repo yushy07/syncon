@@ -668,6 +668,11 @@ class UsageRepository(
             database?.remoteUsageIntervalDao()?.sourceTotalsForDate(usageDate).orEmpty()
         }
 
+    suspend fun getRemoteSourceTotalsBetweenDates(startDate: String, endDate: String): List<RemoteSourceTotal> =
+        withContext(Dispatchers.IO) {
+            database?.remoteUsageIntervalDao()?.sourceTotalsBetweenDates(startDate, endDate).orEmpty()
+        }
+
     fun getTodayUsageFlow(): Flow<List<DailyUsage>> {
         val today = UsageDayCalculator.getTodayUsageDate()
         return dailyUsageDao.getUsageForDateFlow(today)
@@ -1177,6 +1182,11 @@ class UsageRepository(
                 }.toString()
             )
         )
+    }
+
+    suspend fun markCategoryLimitAcknowledged(recordId: String, serverRevision: Long) = withContext(Dispatchers.IO) {
+        val setting = getAllCategoryLimits().firstOrNull { it.recordId == recordId } ?: return@withContext
+        applyRemoteCategoryLimit(setting.copy(serverRevision = serverRevision, syncState = "SYNCED"))
     }
 
     suspend fun getTodayCategoryUsageMinutes(category: String): Long = withContext(Dispatchers.IO) {

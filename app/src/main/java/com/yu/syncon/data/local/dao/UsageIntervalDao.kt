@@ -31,6 +31,9 @@ interface UsageIntervalDao {
         updatedAtUtc: Long
     )
 
+    @Query("UPDATE usage_interval SET syncState = 'SYNCED', serverRevision = :serverRevision, updatedAtUtc = :updatedAtUtc WHERE recordId = :recordId")
+    suspend fun markAcknowledged(recordId: String, serverRevision: Long, updatedAtUtc: Long)
+
     @Query("DELETE FROM usage_interval WHERE usageDate < :cutoffDate")
     suspend fun deleteOlderThan(cutoffDate: String): Int
 }

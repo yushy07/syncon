@@ -33,4 +33,10 @@ interface AppLimitSettingsDao {
 
     @Query("UPDATE app_limit_settings SET isDeleted = 1, isEnabled = 0, syncState = 'LOCAL_ONLY', localRevision = localRevision + 1, updatedAtUtc = :updatedAtUtc WHERE packageName = :packageName")
     suspend fun markDeleted(packageName: String, updatedAtUtc: Long)
+
+    @Query("SELECT * FROM app_limit_settings WHERE recordId = :recordId LIMIT 1")
+    suspend fun getByRecordId(recordId: String): AppLimitSettings?
+
+    @Query("UPDATE app_limit_settings SET serverRevision = :serverRevision, syncState = 'SYNCED' WHERE recordId = :recordId")
+    suspend fun markAcknowledged(recordId: String, serverRevision: Long)
 }

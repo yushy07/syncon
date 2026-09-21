@@ -504,6 +504,14 @@ class FakeAppLimitSettingsDao : AppLimitSettingsDao {
             )
         }
     }
+
+    override suspend fun getByRecordId(recordId: String): AppLimitSettings? =
+        settings.values.firstOrNull { it.recordId == recordId }
+
+    override suspend fun markAcknowledged(recordId: String, serverRevision: Long) {
+        val entry = settings.entries.firstOrNull { it.value.recordId == recordId } ?: return
+        settings[entry.key] = entry.value.copy(serverRevision = serverRevision, syncState = "SYNCED")
+    }
 }
 
 class FakeAppDailyStateDao : AppDailyStateDao {
@@ -626,6 +634,16 @@ class FakeUsageIntervalDao : UsageIntervalDao {
                     updatedAtUtc = updatedAtUtc
                 )
             }
+        }
+    }
+
+    override suspend fun markAcknowledged(recordId: String, serverRevision: Long, updatedAtUtc: Long) {
+        intervals[recordId]?.let { interval ->
+            intervals[recordId] = interval.copy(
+                syncState = "SYNCED",
+                serverRevision = serverRevision,
+                updatedAtUtc = updatedAtUtc
+            )
         }
     }
 

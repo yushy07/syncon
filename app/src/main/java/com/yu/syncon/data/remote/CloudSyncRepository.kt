@@ -2,17 +2,20 @@ package com.yu.syncon.data.remote
 
 import android.content.Context
 import android.net.Uri
+import androidx.room.withTransaction
 import com.yu.syncon.data.local.AppDatabase
+import com.yu.syncon.data.local.entity.ConnectedInstallationCache
 import com.yu.syncon.data.local.entity.AppInfo
 import com.yu.syncon.data.local.entity.AppLimitSettings
 import com.yu.syncon.data.local.entity.BlockEvent
 import com.yu.syncon.data.local.entity.UsageInterval
 import com.yu.syncon.data.local.entity.RemoteUsageInterval
+import com.yu.syncon.data.local.entity.SyncConflict
+import com.yu.syncon.data.local.entity.SyncCursor
+import com.yu.syncon.data.local.entity.SyncUploadAttempt
 import com.yu.syncon.data.repository.UsageRepository
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -31,7 +34,8 @@ data class ConnectedInstallation(
 class CloudSyncRepository(
     context: Context,
     private val client: SupabaseClient,
-    private val usageRepository: UsageRepository
+    private val usageRepository: UsageRepository,
+    private val onSessionChanged: () -> Unit = {}
 ) {
     private val appContext = context.applicationContext
     private val database = AppDatabase.getInstance(appContext)
@@ -41,16 +45,34 @@ class CloudSyncRepository(
     fun isSignedIn(): Boolean = client.hasSession()
 
     suspend fun signUp(email: String, password: String, displayName: String): String =
-        client.signUp(email, password, displayName)
+        client.signUp(email, password, displayName).also { onSessionChanged() }
 
     suspend fun signIn(email: String, password: String) {
         client.signIn(email, password)
+        onSessionChanged()
         syncNow()
     }
 
     suspend fun signOut() {
         client.signOut()
         preferences.edit().clear().apply()
+        database.withTransaction {
+            database.syncMetadataDao().clearCursors()
+            database.syncMetadataDao().clearInstallations()
+        }
+        onSessionChanged()
+    }
+
+    suspend fun deleteAccount(): Boolean {
+        val deleted = client.rpc("delete_sync_account_v3") as? Boolean ?: false
+        client.clearLocalSession()
+        preferences.edit().clear().apply()
+        database.withTransaction {
+            database.syncMetadataDao().clearCursors()
+            database.syncMetadataDao().clearInstallations()
+        }
+        onSessionChanged()
+        return deleted
     }
 
     suspend fun claimPairing(rawValue: String): String {
@@ -85,8 +107,9 @@ class CloudSyncRepository(
     }
 
     suspend fun connectedInstallations(): List<ConnectedInstallation> {
-        val result = client.rpc("list_connected_installations_v2") as? JSONArray ?: return emptyList()
-        return List(result.length()) { index ->
+        return runCatching {
+            val result = client.rpc("list_connected_installations_v2") as? JSONArray ?: JSONArray()
+            val fetched = List(result.length()) { index ->
             val item = result.getJSONObject(index)
             ConnectedInstallation(
                 installationId = item.getString("installation_id"),
@@ -96,8 +119,31 @@ class CloudSyncRepository(
                 lastSeenAt = item.optString("last_seen_at"),
                 isCurrent = item.optBoolean("is_current")
             )
+            }
+            val now = System.currentTimeMillis()
+            database.withTransaction {
+                database.syncMetadataDao().clearInstallations()
+                database.syncMetadataDao().upsertInstallations(fetched.map {
+                    ConnectedInstallationCache(
+                        it.installationId, it.platform, it.displayName, it.clientVersion,
+                        it.lastSeenAt, it.isCurrent, now
+                    )
+                })
+            }
+            fetched
+        }.getOrElse { error ->
+            val cached = database.syncMetadataDao().getInstallations().map {
+                ConnectedInstallation(
+                    it.installationId, it.platform, it.displayName, it.clientVersion,
+                    it.lastSeenAt, it.isCurrent
+                )
+            }
+            if (cached.isEmpty()) throw error else cached
         }
     }
+
+    suspend fun unresolvedConflictCount(): Int =
+        database.syncMetadataDao().getUnresolvedConflicts().size
 
     suspend fun revokeInstallation(installationId: String): Boolean =
         client.rpc("revoke_installation_v2", JSONObject().put("p_installation_id", installationId)) as? Boolean ?: false
@@ -148,8 +194,33 @@ class CloudSyncRepository(
                         .put("is_deleted", item.isDeleted)
                 )
             }
-            client.rpc("sync_push_intervals_v2", JSONObject().put("p_intervals", payload))
-            dao.updateSyncState(pending.map { it.recordId }, "SYNCED", null, System.currentTimeMillis())
+            val now = System.currentTimeMillis()
+            val response = try {
+                client.rpc("sync_push_intervals_v3", JSONObject().put("p_intervals", payload)) as JSONObject
+            } catch (error: Exception) {
+                pending.forEach { item ->
+                    val previous = database.syncMetadataDao().getAttempt(item.recordId)
+                    val count = (previous?.attemptCount ?: 0) + 1
+                    database.syncMetadataDao().upsertAttempt(
+                        SyncUploadAttempt(
+                            item.recordId, "activity_intervals", count, now,
+                            now + (30_000L * (1L shl count.coerceAtMost(6))), error.message
+                        )
+                    )
+                }
+                throw error
+            }
+            val acknowledgements = response.optJSONArray("acknowledgements") ?: JSONArray()
+            val acceptedIds = mutableListOf<String>()
+            repeat(acknowledgements.length()) { index ->
+                val ack = acknowledgements.getJSONObject(index)
+                if (ack.optString("status") == "ACCEPTED") {
+                    val recordId = ack.getString("record_id")
+                    acceptedIds += recordId
+                    dao.markAcknowledged(recordId, ack.getLong("server_revision"), now)
+                }
+            }
+            if (acceptedIds.isNotEmpty()) database.syncMetadataDao().deleteAttempts(acceptedIds)
             if (pending.size < 250) break
         }
     }
@@ -184,7 +255,8 @@ class CloudSyncRepository(
                     .put("snooze_minutes", setting.snoozeMinutes)
                     .put("is_enabled", setting.isEnabled)
                     .put("client_updated_at", iso(setting.updatedAtUtc))
-                    .put("local_revision", setting.localRevision.coerceAtLeast(1L))
+                        .put("local_revision", setting.localRevision.coerceAtLeast(1L))
+                    .put("base_server_revision", setting.serverRevision ?: 0L)
                     .put("is_deleted", setting.isDeleted)
             )
         }
@@ -202,6 +274,7 @@ class CloudSyncRepository(
                     .put("is_enabled", setting.isEnabled)
                     .put("client_updated_at", iso(setting.updatedAtUtc))
                     .put("local_revision", setting.localRevision.coerceAtLeast(1L))
+                    .put("base_server_revision", setting.serverRevision ?: 0L)
                     .put("is_deleted", setting.isDeleted)
             )
         }
@@ -226,31 +299,77 @@ class CloudSyncRepository(
                     .put("is_deleted", false)
             )
         }
-        client.rpc(
-            "sync_push_state_v2",
+        val mappings = JSONArray()
+        DEFAULT_ANDROID_MAPPINGS.forEach { (packageName, serviceId) ->
+            mappings.put(
+                JSONObject()
+                    .put("record_id", "default:ANDROID_APP:$packageName")
+                    .put("source_type", "ANDROID_APP")
+                    .put("source_identifier", packageName)
+                    .put("logical_service_id", serviceId)
+                    .put("client_updated_at", iso(0L))
+                    .put("local_revision", 1)
+                    .put("is_deleted", false)
+            )
+        }
+        val result = client.rpc(
+            "sync_push_state_v3",
             JSONObject()
                 .put("p_sources", sources)
                 .put("p_limits", limits)
                 .put("p_block_events", events)
-                .put("p_source_mappings", JSONArray())
-        )
+                .put("p_source_mappings", mappings)
+        ) as JSONObject
+        val acknowledgements = result.optJSONArray("limit_acknowledgements") ?: JSONArray()
+        repeat(acknowledgements.length()) { index ->
+            val ack = acknowledgements.getJSONObject(index)
+            val recordId = ack.getString("record_id")
+            val revision = ack.getLong("server_revision")
+            database.appLimitSettingsDao().markAcknowledged(recordId, revision)
+            usageRepository.markCategoryLimitAcknowledged(recordId, revision)
+        }
+        val conflicts = result.optJSONArray("conflicts") ?: JSONArray()
+        repeat(conflicts.length()) { index ->
+            val conflict = conflicts.getJSONObject(index)
+            val recordId = conflict.getString("record_id")
+            val local = (0 until limits.length())
+                .map { limits.getJSONObject(it) }
+                .firstOrNull { it.optString("record_id") == recordId }
+            val server = conflict.getJSONObject("server_record")
+            database.syncMetadataDao().upsertConflict(
+                SyncConflict(
+                    recordId = recordId,
+                    collection = "limit_settings",
+                    localPayload = local?.toString() ?: "{}",
+                    serverPayload = server.toString(),
+                    serverRevision = server.getLong("server_revision"),
+                    detectedAtUtc = System.currentTimeMillis()
+                )
+            )
+            applyRemoteLimit(server)
+        }
     }
 
     private suspend fun pullAll(): Long {
-        var cursor = preferences.getLong("sync_cursor", 0L)
+        var cursor = database.syncMetadataDao().getCursor("account")?.serverRevision ?: 0L
         do {
             val page = client.rpc(
                 "sync_pull_v2",
                 JSONObject().put("p_after_revision", cursor).put("p_limit", 1000)
             ) as JSONObject
-            applyPull(page)
-            cursor = page.optLong("next_revision", cursor)
-            preferences.edit().putLong("sync_cursor", cursor).apply()
+            val nextCursor = page.optLong("next_revision", cursor)
+            database.withTransaction {
+                applyPull(page)
+                database.syncMetadataDao().upsertCursor(
+                    SyncCursor("account", nextCursor, System.currentTimeMillis())
+                )
+            }
+            cursor = nextCursor
         } while (page.optBoolean("has_more"))
         return cursor
     }
 
-    private suspend fun applyPull(page: JSONObject) = withContext(Dispatchers.IO) {
+    private suspend fun applyPull(page: JSONObject) {
         val intervals = page.optJSONArray("intervals") ?: JSONArray()
         val intervalItems = List(intervals.length()) { index ->
             val item = intervals.getJSONObject(index)
@@ -322,43 +441,7 @@ class CloudSyncRepository(
 
         val limits = page.optJSONArray("limits") ?: JSONArray()
         repeat(limits.length()) { index ->
-            val item = limits.getJSONObject(index)
-            val target = item.getString("target_identifier")
-            val deleted = item.optBoolean("is_deleted")
-            when {
-                item.getString("target_type") == "SOURCE" && item.optString("source_platform") == "ANDROID" -> {
-                    database.appLimitSettingsDao().upsert(
-                        AppLimitSettings(
-                            packageName = target,
-                            dailyLimitMinutes = item.optInt("daily_limit_minutes").takeIf { !item.isNull("daily_limit_minutes") },
-                            blockingStyle = item.getString("blocking_style"),
-                            snoozeMinutes = item.getInt("snooze_minutes"),
-                            isEnabled = item.optBoolean("is_enabled"),
-                            recordId = item.getString("record_id"),
-                            updatedAtUtc = Instant.parse(item.getString("client_updated_at")).toEpochMilli(),
-                            localRevision = item.getLong("local_revision"),
-                            serverRevision = item.getLong("server_revision"),
-                            syncState = "SYNCED",
-                            isDeleted = deleted
-                        )
-                    )
-                }
-                item.getString("target_type") == "CATEGORY" -> usageRepository.applyRemoteCategoryLimit(
-                    UsageRepository.CategoryLimitSetting(
-                        category = target,
-                        dailyLimitMinutes = item.optInt("daily_limit_minutes", 1),
-                        blockingStyle = item.getString("blocking_style"),
-                        snoozeMinutes = item.getInt("snooze_minutes"),
-                        isEnabled = item.optBoolean("is_enabled"),
-                        recordId = item.getString("record_id"),
-                        updatedAtUtc = Instant.parse(item.getString("client_updated_at")).toEpochMilli(),
-                        localRevision = item.getLong("local_revision"),
-                        serverRevision = item.getLong("server_revision"),
-                        syncState = "SYNCED",
-                        isDeleted = deleted
-                    )
-                )
-            }
+            applyRemoteLimit(limits.getJSONObject(index))
         }
 
         val events = page.optJSONArray("block_events") ?: JSONArray()
@@ -376,5 +459,59 @@ class CloudSyncRepository(
         }
     }
 
+    private suspend fun applyRemoteLimit(item: JSONObject) {
+        val target = item.getString("target_identifier")
+        val deleted = item.optBoolean("is_deleted")
+        when {
+            item.getString("target_type") == "SOURCE" && item.optString("source_platform") == "ANDROID" -> {
+                database.appLimitSettingsDao().upsert(
+                    AppLimitSettings(
+                        packageName = target,
+                        dailyLimitMinutes = item.optInt("daily_limit_minutes").takeIf { !item.isNull("daily_limit_minutes") },
+                        blockingStyle = item.getString("blocking_style"),
+                        snoozeMinutes = item.getInt("snooze_minutes"),
+                        isEnabled = item.optBoolean("is_enabled"),
+                        recordId = item.getString("record_id"),
+                        updatedAtUtc = Instant.parse(item.getString("client_updated_at")).toEpochMilli(),
+                        localRevision = item.getLong("local_revision"),
+                        serverRevision = item.getLong("server_revision"),
+                        syncState = "SYNCED",
+                        isDeleted = deleted
+                    )
+                )
+            }
+            item.getString("target_type") == "CATEGORY" -> usageRepository.applyRemoteCategoryLimit(
+                UsageRepository.CategoryLimitSetting(
+                    category = target,
+                    dailyLimitMinutes = item.optInt("daily_limit_minutes", 1),
+                    blockingStyle = item.getString("blocking_style"),
+                    snoozeMinutes = item.getInt("snooze_minutes"),
+                    isEnabled = item.optBoolean("is_enabled"),
+                    recordId = item.getString("record_id"),
+                    updatedAtUtc = Instant.parse(item.getString("client_updated_at")).toEpochMilli(),
+                    localRevision = item.getLong("local_revision"),
+                    serverRevision = item.getLong("server_revision"),
+                    syncState = "SYNCED",
+                    isDeleted = deleted
+                )
+            )
+        }
+    }
+
     private fun iso(epochMillis: Long): String = Instant.ofEpochMilli(epochMillis.coerceAtLeast(0L)).toString()
+
+    companion object {
+        private val DEFAULT_ANDROID_MAPPINGS = mapOf(
+            "com.google.android.youtube" to "youtube",
+            "com.instagram.android" to "instagram",
+            "com.facebook.katana" to "facebook",
+            "com.reddit.frontpage" to "reddit",
+            "com.twitter.android" to "x-twitter",
+            "com.netflix.mediaclient" to "netflix",
+            "com.spotify.music" to "spotify",
+            "com.whatsapp" to "whatsapp",
+            "com.discord" to "discord",
+            "com.github.android" to "github"
+        )
+    }
 }

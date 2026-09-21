@@ -85,6 +85,7 @@ dependencies {
     implementation(libs.androidx.work.runtime)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.google.code.scanner)
+    implementation(libs.okhttp)
 
     testImplementation(libs.junit)
     testImplementation(libs.androidx.test.core)

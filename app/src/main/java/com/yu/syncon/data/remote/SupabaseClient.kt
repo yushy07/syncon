@@ -50,6 +50,8 @@ class SupabaseClient(private val sessionStore: SecureSessionStore) {
         }
     }
 
+    fun clearLocalSession() = sessionStore.clear()
+
     suspend fun currentSession(): AuthSession? {
         val existing = sessionStore.load() ?: return null
         if (existing.expiresAtUtc > System.currentTimeMillis() + 60_000L) return existing

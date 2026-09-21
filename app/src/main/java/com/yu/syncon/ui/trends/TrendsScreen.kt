@@ -85,6 +85,12 @@ enum class TrendsChartType {
     BARS
 }
 
+enum class TrendsPlatformView {
+    ALL,
+    ANDROID,
+    CHROME
+}
+
 @Composable
 fun TrendsScreen(repository: UsageRepository) {
     val haptic = LocalHapticFeedback.current
@@ -92,6 +98,7 @@ fun TrendsScreen(repository: UsageRepository) {
     var chartType by remember { mutableStateOf(TrendsChartType.CURVE) }
     var viewMode by remember { mutableStateOf(TrendsViewMode.CATEGORIES) }
     var selectedCategory by remember { mutableStateOf<String?>(null) }
+    var platformView by remember { mutableStateOf(TrendsPlatformView.ALL) }
 
     var dailyTotals by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
     var barChartItems by remember { mutableStateOf<List<BarChartItem>>(emptyList()) }
@@ -99,9 +106,19 @@ fun TrendsScreen(repository: UsageRepository) {
     var categoryShares by remember { mutableStateOf<List<CategoryShare>>(emptyList()) }
     var persona by remember { mutableStateOf<UsageRepository.ScreentimePersona?>(null) }
 
-    LaunchedEffect(timeframeDays) {
+    LaunchedEffect(timeframeDays, platformView) {
         val dates = UsageDayCalculator.getRecentUsageDates(timeframeDays)
-        val usageMap = repository.getUsageForDates(dates)
+        val androidMap = repository.getUsageForDates(dates)
+        val chromeMap = dates.associateWith { date ->
+            repository.getCrossPlatformTotals(date).chromeMillis / 60_000L
+        }
+        val usageMap = dates.associateWith { date ->
+            when (platformView) {
+                TrendsPlatformView.ANDROID -> androidMap[date] ?: 0L
+                TrendsPlatformView.CHROME -> chromeMap[date] ?: 0L
+                TrendsPlatformView.ALL -> (androidMap[date] ?: 0L) + (chromeMap[date] ?: 0L)
+            }
+        }
         dailyTotals = usageMap
 
         val todayStr = UsageDayCalculator.getTodayUsageDate()
@@ -144,7 +161,20 @@ fun TrendsScreen(repository: UsageRepository) {
 
         val startDate = dates.firstOrNull() ?: ""
         val endDate = dates.lastOrNull() ?: ""
-        val apps = repository.getTopAppsBetweenDates(startDate, endDate)
+        val androidApps = repository.getTopAppsBetweenDates(startDate, endDate)
+        val chromeSources = repository.getRemoteSourceTotalsBetweenDates(startDate, endDate)
+            .map { source ->
+                AppInfo(
+                    packageName = "chrome:${source.sourceIdentifier}",
+                    appName = source.sourceIdentifier,
+                    category = "Chrome"
+                ) to (source.durationMillis / 60_000L)
+            }
+        val apps = when (platformView) {
+            TrendsPlatformView.ANDROID -> androidApps
+            TrendsPlatformView.CHROME -> chromeSources
+            TrendsPlatformView.ALL -> mergeLogicalServices(androidApps + chromeSources)
+        }.sortedByDescending { it.second }
         topApps = apps
 
         val totalMins = usageMap.values.sum().coerceAtLeast(1L)
@@ -160,7 +190,7 @@ fun TrendsScreen(repository: UsageRepository) {
             )
         }.sortedByDescending { it.minutes }
 
-        persona = repository.getTrendsInsights(dates)
+        persona = if (platformView == TrendsPlatformView.ANDROID) repository.getTrendsInsights(dates) else null
     }
 
     val totalMinutes = dailyTotals.values.sum()
@@ -228,6 +258,29 @@ fun TrendsScreen(repository: UsageRepository) {
             }
         }
 
+
+        item {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(FilterChipShape)
+                    .background(CardSurfaceVariant)
+                    .padding(3.dp)
+            ) {
+                TrendsPlatformView.entries.forEachIndexed { index, mode ->
+                    if (index > 0) Spacer(modifier = Modifier.width(3.dp))
+                    TrendsTimeframeChip(
+                        text = mode.name.lowercase().replaceFirstChar(Char::uppercase),
+                        selected = platformView == mode,
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            platformView = mode
+                        }
+                    )
+                }
+            }
+        }
+
         // Empty State when no usage data is recorded yet
         if (totalMinutes == 0L) {
             item {
@@ -267,7 +320,7 @@ fun TrendsScreen(repository: UsageRepository) {
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = "Use your phone as usual and your trends and digital persona will build over time.",
+                            text = if (platformView == TrendsPlatformView.CHROME) "Browse with the connected Chrome extension and your desktop trends will build here." else "Use your devices as usual and your cross-platform trends will build over time.",
                             style = MaterialTheme.typography.bodyMedium,
                             color = TextSecondary,
                             textAlign = TextAlign.Center
@@ -604,7 +657,7 @@ fun TrendsScreen(repository: UsageRepository) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (viewMode == TrendsViewMode.CATEGORIES) "Category Breakdown" else "App Breakdown",
+                        text = if (viewMode == TrendsViewMode.CATEGORIES) "Category Breakdown" else if (platformView == TrendsPlatformView.CHROME) "Website Breakdown" else "Source Breakdown",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimary
@@ -823,3 +876,61 @@ private fun TrendsTimeframeChip(
         )
     }
 }
+
+private fun mergeLogicalServices(items: List<Pair<AppInfo, Long>>): List<Pair<AppInfo, Long>> {
+    data class Aggregate(var app: AppInfo, var minutes: Long)
+    val grouped = linkedMapOf<String, Aggregate>()
+    items.forEach { (app, minutes) ->
+        val source = app.packageName.removePrefix("chrome:")
+        val service = ANDROID_LOGICAL_SERVICES[app.packageName]
+            ?: CHROME_LOGICAL_SERVICES[source]
+        val key = service?.first ?: app.packageName
+        val displayName = service?.second ?: app.appName
+        val existing = grouped[key]
+        if (existing == null) {
+            grouped[key] = Aggregate(
+                app.copy(
+                    packageName = if (service == null) app.packageName else "service:$key",
+                    appName = displayName,
+                    category = if (service == null) app.category else "Cross-platform"
+                ),
+                minutes
+            )
+        } else {
+            existing.minutes += minutes
+            if (existing.app.category == "Chrome" && app.category != "Chrome") {
+                existing.app = existing.app.copy(category = app.category)
+            }
+        }
+    }
+    return grouped.values.map { it.app to it.minutes }
+}
+
+private val ANDROID_LOGICAL_SERVICES = mapOf(
+    "com.google.android.youtube" to ("youtube" to "YouTube"),
+    "com.instagram.android" to ("instagram" to "Instagram"),
+    "com.facebook.katana" to ("facebook" to "Facebook"),
+    "com.reddit.frontpage" to ("reddit" to "Reddit"),
+    "com.twitter.android" to ("x-twitter" to "X"),
+    "com.netflix.mediaclient" to ("netflix" to "Netflix"),
+    "com.spotify.music" to ("spotify" to "Spotify"),
+    "com.whatsapp" to ("whatsapp" to "WhatsApp"),
+    "com.discord" to ("discord" to "Discord"),
+    "com.github.android" to ("github" to "GitHub")
+)
+
+private val CHROME_LOGICAL_SERVICES = mapOf(
+    "youtube.com" to ("youtube" to "YouTube"),
+    "youtu.be" to ("youtube" to "YouTube"),
+    "instagram.com" to ("instagram" to "Instagram"),
+    "facebook.com" to ("facebook" to "Facebook"),
+    "reddit.com" to ("reddit" to "Reddit"),
+    "x.com" to ("x-twitter" to "X"),
+    "twitter.com" to ("x-twitter" to "X"),
+    "netflix.com" to ("netflix" to "Netflix"),
+    "spotify.com" to ("spotify" to "Spotify"),
+    "open.spotify.com" to ("spotify" to "Spotify"),
+    "web.whatsapp.com" to ("whatsapp" to "WhatsApp"),
+    "discord.com" to ("discord" to "Discord"),
+    "github.com" to ("github" to "GitHub")
+)

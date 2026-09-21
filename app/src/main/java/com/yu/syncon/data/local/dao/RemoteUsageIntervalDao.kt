@@ -25,6 +25,9 @@ interface RemoteUsageIntervalDao {
     @Query("SELECT sourceIdentifier, sourceType, SUM(durationMillis) AS durationMillis FROM remote_usage_interval WHERE usageDate = :usageDate AND isDeleted = 0 GROUP BY sourceIdentifier, sourceType ORDER BY durationMillis DESC")
     suspend fun sourceTotalsForDate(usageDate: String): List<RemoteSourceTotal>
 
+    @Query("SELECT sourceIdentifier, sourceType, SUM(durationMillis) AS durationMillis FROM remote_usage_interval WHERE usageDate BETWEEN :startDate AND :endDate AND isDeleted = 0 GROUP BY sourceIdentifier, sourceType ORDER BY durationMillis DESC")
+    suspend fun sourceTotalsBetweenDates(startDate: String, endDate: String): List<RemoteSourceTotal>
+
     @Query("DELETE FROM remote_usage_interval WHERE usageDate < :cutoffDate")
     suspend fun deleteOlderThan(cutoffDate: String): Int
 }

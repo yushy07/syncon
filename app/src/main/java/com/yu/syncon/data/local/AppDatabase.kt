@@ -14,6 +14,7 @@ import com.yu.syncon.data.local.dao.BlockEventDao
 import com.yu.syncon.data.local.dao.DailyUsageDao
 import com.yu.syncon.data.local.dao.UsageIntervalDao
 import com.yu.syncon.data.local.dao.RemoteUsageIntervalDao
+import com.yu.syncon.data.local.dao.SyncMetadataDao
 import com.yu.syncon.data.local.entity.AppConfig
 import com.yu.syncon.data.local.entity.AppDailyState
 import com.yu.syncon.data.local.entity.AppInfo
@@ -22,6 +23,10 @@ import com.yu.syncon.data.local.entity.BlockEvent
 import com.yu.syncon.data.local.entity.DailyUsage
 import com.yu.syncon.data.local.entity.UsageInterval
 import com.yu.syncon.data.local.entity.RemoteUsageInterval
+import com.yu.syncon.data.local.entity.ConnectedInstallationCache
+import com.yu.syncon.data.local.entity.SyncConflict
+import com.yu.syncon.data.local.entity.SyncCursor
+import com.yu.syncon.data.local.entity.SyncUploadAttempt
 
 @Database(
     entities = [
@@ -32,9 +37,13 @@ import com.yu.syncon.data.local.entity.RemoteUsageInterval
         BlockEvent::class,
         AppConfig::class,
         UsageInterval::class,
-        RemoteUsageInterval::class
+        RemoteUsageInterval::class,
+        SyncCursor::class,
+        ConnectedInstallationCache::class,
+        SyncConflict::class,
+        SyncUploadAttempt::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -47,6 +56,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun appConfigDao(): AppConfigDao
     abstract fun usageIntervalDao(): UsageIntervalDao
     abstract fun remoteUsageIntervalDao(): RemoteUsageIntervalDao
+    abstract fun syncMetadataDao(): SyncMetadataDao
 
     companion object {
         @Volatile
@@ -139,6 +149,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS sync_cursor (scope TEXT NOT NULL PRIMARY KEY, serverRevision INTEGER NOT NULL, updatedAtUtc INTEGER NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS connected_installation_cache (installationId TEXT NOT NULL PRIMARY KEY, platform TEXT NOT NULL, displayName TEXT NOT NULL, clientVersion TEXT NOT NULL, lastSeenAt TEXT NOT NULL, isCurrent INTEGER NOT NULL, cachedAtUtc INTEGER NOT NULL)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS sync_conflict (recordId TEXT NOT NULL PRIMARY KEY, collection TEXT NOT NULL, localPayload TEXT NOT NULL, serverPayload TEXT NOT NULL, serverRevision INTEGER NOT NULL, detectedAtUtc INTEGER NOT NULL, resolvedAtUtc INTEGER)")
+                db.execSQL("CREATE TABLE IF NOT EXISTS sync_upload_attempt (recordId TEXT NOT NULL PRIMARY KEY, collection TEXT NOT NULL, attemptCount INTEGER NOT NULL, lastAttemptAtUtc INTEGER NOT NULL, nextAttemptAtUtc INTEGER NOT NULL, lastError TEXT)")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -151,6 +170,7 @@ abstract class AppDatabase : RoomDatabase() {
                 .addMigrations(MIGRATION_3_4)
                 .addMigrations(MIGRATION_4_5)
                 .addMigrations(MIGRATION_5_6)
+                .addMigrations(MIGRATION_6_7)
                 // Safety policy: if sideloading an older build, avoid crash on schema downgrade
                 .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                 // For future schema version upgrades (e.g. 1 -> 2), add .addMigrations(MIGRATION_1_2) here
