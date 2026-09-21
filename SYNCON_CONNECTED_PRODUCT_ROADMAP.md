@@ -1,8 +1,21 @@
 # SyncOn Connected Product Roadmap
 
-Status date: 2026-09-20  
+Status date: 2026-09-21  
 Scope: Android app + Chrome extension + Supabase + QR pairing + shared product design  
 Implementation rule: local tracking and blocking must continue even when authentication, Supabase, or another device is unavailable.
+
+## Implementation update — 2026-09-21
+
+Production-hardening code from phases 1–10 is now implemented and pushed:
+
+- Live migration `202609200005` adds per-record acknowledgements, optimistic limit conflicts, private account Broadcast triggers, security audit events, scheduled pairing/anonymous cleanup, and owner account deletion.
+- Anonymous sign-ins are limited to 10 per hour per IP in the live Supabase Auth configuration; pairing creation is additionally limited inside the database.
+- Android Room v7 durably stores the sync cursor, connected-device cache, conflicts, and retry metadata. Pull application and cursor advancement share a Room transaction.
+- Android subscribes to private Realtime wakeups, displays All/Android/Chrome Trends, merges known logical services, and exposes permanent cloud-account deletion.
+- Chrome IndexedDB v3 durably stores cursor/state snapshots, conflicts, retry metadata, and remote intervals. It uses v3 acknowledgements/conflicts, private Realtime wakeups, logical-service merging, and active digital span.
+- Store privacy copy, data-safety answers, permission justifications, listing text, signing wiring, packaging automation, and a GitHub Pages privacy site are prepared under `release/` and `docs/`.
+
+Phase 11 remains the release gate: real Android/Chrome pairing and recovery scenarios, final runtime screenshots, a private Android upload key, store-console submissions, and CAPTCHA provider credentials. These external/device steps are not represented as completed by source builds alone.
 
 ## 1. Final product outcome
 

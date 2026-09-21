@@ -1,12 +1,12 @@
-# SyncOn sync API v1
+# SyncOn sync API v3
 
-Pairing and account-scoped sync are added by migration v2. New clients use the `_v2` RPCs and the QR format in `shared/pairing-contract-v1.md`.
+Pairing and account-scoped pull use the `_v2` RPCs. Production uploads, context, conflicts, and account deletion use `_v3`. The QR format remains in `shared/pairing-contract-v1.md`.
 
 All RPCs require a signed-in Supabase user. Clients send the project publishable key and the user's access token; they never use a service-role key.
 
 ## Register an installation
 
-Call `sync_register_installation_v1` before uploading records.
+Call `sync_register_installation_v2` before uploading records.
 
 ```json
 {
@@ -21,7 +21,7 @@ Call `sync_register_installation_v1` before uploading records.
 
 ## Push activity
 
-Call `sync_push_intervals_v1` with `p_intervals`, an array using the snake_case form of the shared activity contract.
+Call `sync_push_intervals_v3` with `p_intervals`, an array using the snake_case form of the shared activity contract.
 
 ```json
 {
@@ -47,11 +47,11 @@ Call `sync_push_intervals_v1` with `p_intervals`, an array using the snake_case 
 }
 ```
 
-Uploads are idempotent by `(user_id, record_id)`. A correction is accepted only when its local revision is newer, or its matching revision carries a later client update time.
+Uploads are idempotent by account and record ID. The result includes `acknowledgements` containing `record_id`, `server_revision`, and `status`; clients mark only acknowledged records as synced.
 
 ## Push settings and metadata
 
-Call `sync_push_state_v2` with any combination of these arrays:
+Call `sync_push_state_v3` with any combination of these arrays:
 
 - `p_sources`: source identity, display name, category, manual-category flag, revision and tombstone.
 - `p_limits`: stable record ID, installation, target type/identifier, optional platform, minutes, style, snooze, enabled state, revision and tombstone.
@@ -59,6 +59,8 @@ Call `sync_push_state_v2` with any combination of these arrays:
 - `p_source_mappings`: stable record ID, source identity, logical service ID, revision and tombstone.
 
 Omitted collections default to empty arrays. The call is atomic.
+
+Each limit mutation includes `base_server_revision`. A matching revision is accepted and returned in `limit_acknowledgements`. A stale revision is returned in `conflicts` with the current `server_record`; clients keep that server-approved value, store the conflict durably, and let a later intentional edit retry from the new revision.
 
 ## Pull changes
 
@@ -76,3 +78,13 @@ Call `account_usage_summary_v1` with inclusive dates. Each row returns:
 
 - `summed_device_millis`: all device intervals added together.
 - `active_digital_span_millis`: overlapping intervals merged into elapsed human time.
+
+## Realtime wakeups
+
+Call `get_sync_context_v3` to obtain the private `account:<uuid>` topic. Database triggers broadcast only `collection` and `server_revision` in a `sync_changed` event. On receipt, clients run the normal cursor pull; Broadcast is never the source of truth.
+
+## Cleanup, audit, and deletion
+
+- `cleanup_expired_pairing_requests_v3` is scheduled daily through Supabase Cron and also removes safe, abandoned anonymous identities.
+- `sync_security_events` records pairing lifecycle, suspicious retry, revocation, and deletion-request events without secrets or usage payloads.
+- `delete_sync_account_v3` is owner-only and permanently deletes the Auth user plus account-scoped cloud data through cascading foreign keys.
