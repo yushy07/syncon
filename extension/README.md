@@ -27,8 +27,10 @@ The extension works without a build step. On first install it opens a local pair
 - Versioned JSON export/import
 - Three-year local retention
 - Stable installation, interval, and settings IDs
-- Cross-platform-ready timestamps and local sync metadata
-- IndexedDB interval storage with Manifest V3 worker-session recovery
+- Account-scoped Android + Chrome summaries and logical-service merging
+- Overlap-adjusted active digital span
+- IndexedDB interval, cursor, conflict, retry, and remote-cache storage
+- Private Supabase Realtime wakeups with alarm/manual fallback
 
 ## Pairing and privacy
 

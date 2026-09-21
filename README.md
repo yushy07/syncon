@@ -13,9 +13,9 @@
 [![Target SDK](https://img.shields.io/badge/Target%20SDK-36-green.svg)](https://developer.android.com)
 [![Language](https://img.shields.io/badge/Language-Kotlin%202.4-purple.svg)](https://kotlinlang.org)
 [![UI Toolkit](https://img.shields.io/badge/UI-Jetpack%20Compose%20%2F%20Material%203-blueviolet.svg)](https://developer.android.com/jetpack/compose)
-[![Privacy](https://img.shields.io/badge/Privacy-100%25%20Offline%20%7C%20Zero%20Network-success.svg)](#privacy--zero-network-guarantee)
+[![Privacy](https://img.shields.io/badge/Privacy-Local--first%20%7C%20Optional%20encrypted%20sync-success.svg)](#privacy--local-first-sync)
 
-**A high-precision, offline-first personal digital wellbeing and app limit enforcement system for Android.**
+**A local-first digital wellbeing system for Android and Chrome with optional cross-platform sync.**
 
 *"Same phone. A more intentional you."*
 
@@ -29,7 +29,7 @@
 
 **SyncOn** is an advanced, standalone Android application designed to give you uncompromising control over your screen time. While standard digital wellbeing tools provide passive observation, SyncOn enforces proactive, granular boundaries tailored to your daily schedule:
 
-- 🔒 **100% Offline & Private:** Built with zero network permissions. Your personal usage data never leaves your device.
+- 🔒 **Local-first & Private:** Tracking and blocking work offline. Cloud sync starts only after account sign-in and QR pairing.
 - 🌅 **Custom Usage Days:** Evaluates your day on a **4:00 AM to 4:00 AM** boundary—late night activity counts toward your actual awake period, not an arbitrary midnight reset.
 - 🛡️ **Strict vs. Soft Blocking:** Enforce ironclad limits on distraction apps while maintaining flexible snoozes for work and utility tools.
 - ⚡ **Data Gap Reconciliation:** Never loses usage history across reboots or background kills by reconciling with Android's system event log.
@@ -96,12 +96,11 @@ Configure each application with an independent daily limit:
 
 ---
 
-## Privacy & Zero-Network Guarantee
+## Privacy & Local-First Sync
 
-SyncOn is built from the ground up for absolute privacy:
-- 🚫 **No `android.permission.INTERNET` declared** anywhere in the manifest.
-- 🚫 No analytics, crash reporters, telemetry, cloud databases, or third-party ads.
-- 💾 All data is stored strictly on-device in a local Room (SQLite) database.
+SyncOn records Android usage locally in Room and Chrome usage locally in IndexedDB before any network request. Tracking, limits, blocking, exports, and local history remain usable without an account or connection.
+
+When the user signs in and pairs Chrome through a short-lived QR request, SyncOn sends normalized app/domain activity intervals, settings, device membership, and sync cursors to the user's Supabase-backed account. It does not collect page contents, full browsing URLs, form data, keystrokes, contacts, advertising identifiers, or precise location. There are no ads or third-party analytics. See [`release/PRIVACY_POLICY.md`](release/PRIVACY_POLICY.md) for the release policy.
 
 ---
 
@@ -299,7 +298,7 @@ The local-first Chrome companion lives in [`extension/`](extension/). It is self
 
 The extension tracks focused domain-level activity, excludes idle and unfocused time, supports strict and soft website limits, and stores precise backend-ready intervals locally. It does not collect full URLs, page contents, form data, or search terms.
 
-The Android and Chrome clients share the activity model documented in [`shared/data-contract-v1.md`](shared/data-contract-v1.md). The versioned Supabase schema and synchronization RPCs live in [`supabase/`](supabase/); client account and transport wiring is the next integration phase.
+The Android and Chrome clients share the activity model documented in [`shared/data-contract-v1.md`](shared/data-contract-v1.md). Supabase provides account-scoped RLS, QR pairing, cursor sync, explicit setting conflicts, Realtime wake signals, cleanup jobs, connected-device revocation, and account deletion.
 
 ---
 
