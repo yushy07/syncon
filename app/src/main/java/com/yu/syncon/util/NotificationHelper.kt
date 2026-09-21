@@ -4,6 +4,7 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.util.Log
@@ -46,6 +47,8 @@ object NotificationHelper {
 
     fun buildTrackingServiceNotification(context: Context): Notification {
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            component = ComponentName(context, MainActivity::class.java)
+            setPackage(context.packageName)
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
@@ -69,6 +72,8 @@ object NotificationHelper {
         if (!PermissionUtils.hasNotificationPermission(context)) return
 
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            component = ComponentName(context, MainActivity::class.java)
+            setPackage(context.packageName)
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
@@ -99,6 +104,8 @@ object NotificationHelper {
         if (!PermissionUtils.hasNotificationPermission(context)) return
 
         val openAppIntent = Intent(context, MainActivity::class.java).apply {
+            component = ComponentName(context, MainActivity::class.java)
+            setPackage(context.packageName)
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val pendingIntent = PendingIntent.getActivity(
